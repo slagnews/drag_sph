@@ -11,7 +11,7 @@ def kernel(dx,h):
     Returns:
         Kernel value.
     """
-    return 1/np.sqrt(2*np.pi*h**2)*np.exp(-0.5*(dx/h)**2)
+    return 1/(2*np.pi*h**2)*np.exp(-0.5*(dx/h)**2)
 
 
 def density(positions, h, L, grid_size=100):
