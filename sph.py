@@ -94,7 +94,7 @@ def get_pressures(densities, c_s, rho0):
 def get_pressure_grid(density_grid, c_s, rho0):
     """Calculates the pressures on a grid"""
     pressure_grid = tait_pressure(density_grid, c_s, rho0, 7)
-    return x,y,pressure_grid
+    return pressure_grid
 
 def accelerations(positions, masses, L, h, c_s, rho0):
     rel_pos, distances = relative_positions(positions, L)
