@@ -108,7 +108,7 @@ def accelerations(positions, masses, L, h, c_s, rho0):
         accelerations[i] = -np.sum((masses*(pressures/densities**2+pressures[i]/densities[i]**2))[:,None]*nablaW[i],axis=0)
     return accelerations
 
-def animate_particles(positions, L, no_frames):
+def animate_particles(positions, masses, L, h, no_frames, file_name="animation.mp4"):
     """Animate the positions of particles in a 2D space.
     Arguments:
         positions: 3D numpy array of shape (no_steps, no_particles, 2) containing the x and y coordinates of the particles.
@@ -128,7 +128,7 @@ def animate_particles(positions, L, no_frames):
 
     def update(frame):
         """Update the scatter plot for each frame."""
-        print(f"frame {frame}")
+        print(f"Frame {frame} of {no_frames} done", end="\r")
         scatter.set_xdata(positions[frame,:,0])
         scatter.set_ydata(positions[frame,:,1])
         x,y,rho = get_density_grid(positions[frame], masses, L, h)
@@ -137,7 +137,8 @@ def animate_particles(positions, L, no_frames):
 
     ani = FuncAnimation(fig, update, frames=no_frames, interval=50)
     plt.show()
-    ani.save("animation.mp4", fps=30, extra_args=['-vcodec', 'libx264'], dpi=300)
+    ani.save(file_name, fps=30, extra_args=['-vcodec', 'libx264'], dpi=300)
+    print(f"Animation saved to {file_name}!")
 
 def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt, no_steps):
     """Integrate the positions and velocities of particles in a 2D space.
@@ -160,44 +161,5 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
         positions[i] = positions[i-1] + velocities[i-1] * dt
         positions[i] %= L  # Apply periodic boundary conditions
         velocities[i] = velocities[i-1] + dt*accelerations(positions[i], masses, L, h, c_s, rho0) # Assuming constant velocity for simplicity
-        print(f"{(i+1)/no_steps*100:.0f}% done")
+        print(f"{(i+1)/no_steps*100:.0f}% done", end="\r")
     return positions, velocities
-
-if __name__ == "__main__":
-    no_particles = 100
-    no_steps = 100
-    L = 3
-    h = 0.5
-    v0 = 0.1
-    dt = 0.01
-    c_s = 10
-    rho0 = 10
-    masses = np.array([1]*no_particles)
-
-    positions = np.random.random(size=(no_particles,2))*L
-    velocities = np.random.normal(size=(no_particles,2))*v0
-
-    acc = accelerations(positions, masses, L, h, c_s, rho0)
-    print(acc)
-    # Plot densities
-    x,y,density_grid = get_density_grid(positions, [1]*no_particles, L, h)
-    particle_densities = get_densities(positions, [1]*no_particles, L, h)
-    fig, (ax,ax2) = plt.subplots(ncols=2)
-    pcol = ax.pcolor(x,y,density_grid, cmap="viridis", vmin=np.amin(density_grid), vmax=np.amax(density_grid))
-    ax2.scatter(positions[:,0], positions[:,1], c=particle_densities, vmin=np.amin(density_grid), vmax=np.amax(density_grid) , s=5)
-    fig.colorbar(pcol)
-
-    x,y,pressure_grid = get_pressure_grid(density_grid,c_s,rho0)
-    particle_pressures = get_pressures(particle_densities, c_s, rho0)
-    fig, (ax,ax2) = plt.subplots(ncols=2)
-    ax.pcolor(x,y,pressure_grid, cmap="viridis", vmin=np.amin(pressure_grid), vmax=np.amax(pressure_grid))
-    ax2.scatter(positions[:,0], positions[:,1], c=particle_pressures, cmap="viridis", vmin=np.amin(pressure_grid), vmax=np.amax(pressure_grid), s=5)
-    plt.show()
-    
-    
-    print("integrating...")
-    pos, vel = integrate(positions, velocities, masses, L, h, c_s, rho0, dt, no_steps)
-    print("animating...")
-    animate_particles(pos, L, no_steps)
-    
-
