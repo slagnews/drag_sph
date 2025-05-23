@@ -14,3 +14,50 @@ $$
 $$
 \nabla W_{ij}=\frac{\mathbf{r}_i-\mathbf{r}_j}{|\mathbf{r}_i-\mathbf{r}_j|}\frac{\mathrm{d}}{\mathrm{d}r}W(r,h)|_{r=|\mathbf{r}_i-\mathbf{r}_j|}
 $$
+
+### Internal energy calculation
+According to Monaghan (equation 3.14) the change in internal energy of a particle $i$ is given by
+$$
+\frac{\mathrm{d}u_i}{\mathrm{d}t}=\frac{P_i}{\rho_i^2}\sum_j m_j \mathbf{v}_{ij}\cdot \nabla_i W_{ij}
+$$
+with
+$$
+v_{ij}\equiv v_i-v_j
+$$
+and $\nabla_i$ the derivative at position $\mathbf{r}_i$.
+
+### Internal energy from EOS
+The kinetic energy of the system is easily calculated from
+$$
+K = \frac{1}{2}\sum_i m_i \mathbf{v}_i^2
+$$
+The thermal energy is a bit more complicated. For an adiabatic process we have
+$$
+\mathrm{d}u=-P\mathrm{d}v
+$$
+with $v=1/\rho$ so we get
+$$
+\mathrm{d}u=-P\mathrm{d}\left(\frac{1}{\rho}\right)
+$$
+Using the Cole Equation of state
+$$
+P=B\left[\left(\frac{\rho}{\rho_0}\right)^\gamma-1\right]
+$$
+we get 
+$$
+\mathrm{d}u=-B\left[\left(\frac{\rho}{\rho_0}\right)^\gamma-1\right]\mathrm{d}\left(\frac{1}{\rho}\right)
+$$
+using again $v=1/\rho$ we get
+$$
+du=-B\left[\rho_0^{-\gamma}v^{-\gamma}-1\right]dv
+$$
+$$
+\int du=-B\rho_0^{-\gamma}\left[\int v^{-\gamma}dv-\int dv\right]
+$$
+$$
+u=-B\rho_0^{-\gamma}\left[\frac{1}{1-\gamma}v^{1-\gamma}-v\right]+C
+$$
+defining $C=0$ we get
+$$
+u =-\frac{B}{\rho_0^\gamma}\left[\frac{\rho^{\gamma-1}}{1-\gamma}-\frac{1}{\rho}\right]
+$$

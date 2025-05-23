@@ -177,14 +177,40 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
         positions: 3D numpy array of shape (no_steps, no_particles, 2) containing the x and y coordinates of the particles at each time step.
         velocities: 3D numpy array of shape (no_steps, no_particles, 2) containing the x and y velocities of the particles at each time step.
     """
-    positions = np.zeros((no_steps, initial_positions.shape[0], 2))
-    velocities = np.zeros((no_steps, initial_positions.shape[0], 2))
+
+    # Initialize data arrays
+    no_particles = initial_positions.shape[0]
+    positions = np.zeros((no_steps, no_particles, 2))
+    velocities = np.zeros((no_steps, no_particles, 2))
+    kinetic_energies = np.zeros((no_steps, no_particles))
+    internal_energies = np.zeros((no_steps, no_particles))
+
+    # Set initial conditions
     positions[0] = initial_positions
     velocities[0] = initial_velocities
-
+    kinetic_energies[0] = 1/2*np.sum(velocities[0]**2, axis=1)
+    
     for i in range(1, no_steps):
         positions[i] = positions[i-1] + velocities[i-1] * dt
         positions[i] %= L
         velocities[i] = velocities[i-1] + dt*accelerations(positions[i], masses, L, h, c_s, rho0)
+
+        # Calculate kinetic energies
+        kinetic_energies[i] = 1/2*np.sum(velocities[i]**2, axis=1)
+
+        # Calculate internal energies
+        """
+        densities = get_densities(positions[i], masses, L, h)
+        pressures = get_pressures(densities, c_s, rho0)
+
+        distances, rel_pos = relative_positions(positions[i], L)
+        distances2 = np.where(distances==0, np.inf, distances) 
+        nablaW = deriv_kernel(distances, h)[:,:,None]*-rel_pos/distances2[:,:,None]
+        for j in range(no_particles):
+            dv = velocities[j] - velocities
+            
+            dudt = pressures[j]/densities[j]**2+np.sum(masses*(dv[0]*nablaW[j,:,0]+dv[1]*nablaW[j,:,0]))
+            internal_energies[i,j] += dudt*dt
+        """
         print(f"{(i+1)/no_steps*100:.0f}% done", end="\r")
     return positions, velocities
