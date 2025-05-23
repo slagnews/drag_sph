@@ -82,18 +82,43 @@ def get_density_grid(positions, masses, L, h, grid_size=100):
     density = np.sum(masses*kernel(distances, h), axis=2)
     return x,y,density
 
-def tait_pressure(rho, c_s, rho0, gamma):
+def cole_pressure(rho, c_s, rho0, gamma):
+    """Calculates the pressure from the Cole Equation of State
+    Arguments:
+        rho (np.ndarray or float): density
+        c_s (float): speed of sound
+        rho0 (float): reference density
+        gamma (float): adiabatic inde
+    Returns:
+        (np.ndarray or float): pressure
+    """
     B = c_s**2*rho0/gamma
     return B*((rho/rho0)**gamma-1)
 
-def get_pressures(densities, c_s, rho0):
-    """Calculates the pressures at all particle positions"""
-    pressures = tait_pressure(densities, c_s, rho0, 7)
+def get_pressures(rho, c_s, rho0):
+    """Calculates the pressures at all particle positions
+    Arguments:
+        rho (np.ndarray): densities at particle positions
+        c_s (float): speed of sound
+        rho0 (float): reference density
+        gamma (float): adiabatic index
+    Returns:
+        (np.ndarray): pressures at particle positions
+    """
+    pressures = cole_pressure(rho, c_s, rho0, 7)
     return pressures
 
 def get_pressure_grid(density_grid, c_s, rho0):
-    """Calculates the pressures on a grid"""
-    pressure_grid = tait_pressure(density_grid, c_s, rho0, 7)
+    """Calculates the pressures on a grid
+    Arguments:
+        rho (np.ndarray): density grid
+        c_s (float): speed of sound
+        rho0 (float): reference density
+        gamma (float): adiabatic inde
+    Returns:
+        (np.ndarray or float): pressure grid
+    """
+    pressure_grid = cole_pressure(density_grid, c_s, rho0, 7)
     return pressure_grid
 
 def accelerations(positions, masses, L, h, c_s, rho0):
@@ -159,7 +184,7 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
 
     for i in range(1, no_steps):
         positions[i] = positions[i-1] + velocities[i-1] * dt
-        positions[i] %= L  # Apply periodic boundary conditions
-        velocities[i] = velocities[i-1] + dt*accelerations(positions[i], masses, L, h, c_s, rho0) # Assuming constant velocity for simplicity
+        positions[i] %= L
+        velocities[i] = velocities[i-1] + dt*accelerations(positions[i], masses, L, h, c_s, rho0)
         print(f"{(i+1)/no_steps*100:.0f}% done", end="\r")
     return positions, velocities
