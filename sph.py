@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+from datetime import datetime
 
 np.random.seed(0)
 
@@ -133,13 +134,15 @@ def accelerations(positions, masses, L, h, c_s, rho0):
         accelerations[i] = -np.sum((masses*(pressures/densities**2+pressures[i]/densities[i]**2))[:,None]*nablaW[i],axis=0)
     return accelerations
 
-def animate_particles(positions, masses, L, h, no_frames, file_name="animation.mp4"):
+def animate_particles(positions, masses, L, h, fps=30, file_name="animation.mp4"):
     """Animate the positions of particles in a 2D space.
     Arguments:
         positions: 3D numpy array of shape (no_steps, no_particles, 2) containing the x and y coordinates of the particles.
         L: Length of the box (for setting limits).
-        no_frames: Number of frames to display in the animation.
     """
+    
+
+    no_frames = len(positions)
 
     fig, ax = plt.subplots()
     ax.set_xlim(0, L)
@@ -150,20 +153,42 @@ def animate_particles(positions, masses, L, h, no_frames, file_name="animation.m
     scatter, = ax.plot(positions[0,:,0], positions[0,:,1], linestyle="None", marker="o", markersize=1, color="red")
     x,y,rho = get_density_grid(positions[0], masses, L, h)
     mesh = ax.pcolor(x,y,rho, cmap="viridis")
-
+    theta = np.linspace(0,2*np.pi,100)
+    ax.plot(L/2+0.5*np.cos(theta),L/2+0.5*np.sin(theta), color="white")
+    start = datetime.now()
     def update(frame):
         """Update the scatter plot for each frame."""
-        print(f"Frame {frame} of {no_frames} done", end="\r")
+        
         scatter.set_xdata(positions[frame,:,0])
         scatter.set_ydata(positions[frame,:,1])
         x,y,rho = get_density_grid(positions[frame], masses, L, h)
         mesh.set_array(rho.ravel())
+
+        ttg = (datetime.now() - start)/(frame+1) * (no_frames - frame)
+        print(f"Frame {frame+1} of {no_frames} done, time to go: {ttg}", end="\r")
         return scatter,mesh
 
     ani = FuncAnimation(fig, update, frames=no_frames, interval=50)
     plt.show()
-    ani.save(file_name, fps=30, extra_args=['-vcodec', 'libx264'], dpi=300)
+    ani.save(file_name, fps=fps, extra_args=['-vcodec', 'libx264'], dpi=300)
     print(f"Animation saved to {file_name}!")
+
+def object_acceleration(positions, L, R, width, k):
+        dx = positions[:,0] - L/2
+        dx = (dx+L/2)%L - L/2
+        dy = positions[:,1] - L/2
+        dy = (dy+L/2)%L - L/2
+        distance = np.sqrt(dx**2+dy**2)
+        nx = dx/distance
+        ny = dy/distance
+        n = np.column_stack((nx,ny))
+        k = 1000
+
+        strength = 1/(1+np.exp((distance-R)/width))
+        
+        forces = k*strength[:,None]*n
+        return forces
+
 
 def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt, no_steps):
     """Integrate the positions and velocities of particles in a 2D space.
@@ -177,6 +202,7 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
         positions: 3D numpy array of shape (no_steps, no_particles, 2) containing the x and y coordinates of the particles at each time step.
         velocities: 3D numpy array of shape (no_steps, no_particles, 2) containing the x and y velocities of the particles at each time step.
     """
+    start = datetime.now()
 
     # Initialize data arrays
     no_particles = initial_positions.shape[0]
@@ -193,7 +219,12 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
     for i in range(1, no_steps):
         positions[i] = positions[i-1] + velocities[i-1] * dt
         positions[i] %= L
-        velocities[i] = velocities[i-1] + dt*accelerations(positions[i], masses, L, h, c_s, rho0)
+        pressure_accelerations = accelerations(positions[i], masses, L, h, c_s, rho0)
+        object_acc = object_acceleration(positions[i], L, 0.5, 0.1, 1)
+        #print(np.mean(np.abs(pressure_accelerations)))
+        #print(np.mean(np.abs(object_acc)))
+        #print()
+        velocities[i] = velocities[i-1] + dt*(pressure_accelerations+object_acc)
 
         # Calculate kinetic energies
         kinetic_energies[i] = 1/2*np.sum(velocities[i]**2, axis=1)
@@ -212,5 +243,6 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
             dudt = pressures[j]/densities[j]**2+np.sum(masses*(dv[0]*nablaW[j,:,0]+dv[1]*nablaW[j,:,0]))
             internal_energies[i,j] += dudt*dt
         """
-        print(f"{(i+1)/no_steps*100:.0f}% done", end="\r")
+        ttg = (datetime.now()-start)/i * (no_steps-i)
+        print(f"{(i+1)/no_steps*100:.0f}% done, time to go: {ttg}", end="\r")
     return positions, velocities
