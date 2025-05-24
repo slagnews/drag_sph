@@ -155,9 +155,11 @@ def animate_particles(positions, masses, L, h, fps=30, file_name="animation.mp4"
     mesh = ax.pcolor(x,y,rho, cmap="viridis")
     theta = np.linspace(0,2*np.pi,100)
     ax.plot(L/2+0.5*np.cos(theta),L/2+0.5*np.sin(theta), color="white")
-    start = datetime.now()
+    #start = datetime.now()
     def update(frame):
         """Update the scatter plot for each frame."""
+        if frame == 0:
+            start = datetime.now()
         
         scatter.set_xdata(positions[frame,:,0])
         scatter.set_ydata(positions[frame,:,1])
@@ -190,7 +192,7 @@ def object_acceleration(positions, L, R, width, k):
         return forces
 
 
-def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt, no_steps):
+def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt, no_steps, central_object=False):
     """Integrate the positions and velocities of particles in a 2D space.
     Arguments:
         initial_positions: 2D numpy array of shape (no_particles, 2) containing the initial x and y coordinates of the particles.
@@ -208,29 +210,28 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
     no_particles = initial_positions.shape[0]
     positions = np.zeros((no_steps, no_particles, 2))
     velocities = np.zeros((no_steps, no_particles, 2))
-    kinetic_energies = np.zeros((no_steps, no_particles))
-    internal_energies = np.zeros((no_steps, no_particles))
+    #kinetic_energies = np.zeros((no_steps, no_particles))
+    #internal_energies = np.zeros((no_steps, no_particles))
 
     # Set initial conditions
     positions[0] = initial_positions
     velocities[0] = initial_velocities
-    kinetic_energies[0] = 1/2*np.sum(velocities[0]**2, axis=1)
+    #kinetic_energies[0] = 1/2*np.sum(velocities[0]**2, axis=1)
     
     for i in range(1, no_steps):
         positions[i] = positions[i-1] + velocities[i-1] * dt
         positions[i] %= L
-        pressure_accelerations = accelerations(positions[i], masses, L, h, c_s, rho0)
-        object_acc = object_acceleration(positions[i], L, 0.5, 0.1, 1)
-        #print(np.mean(np.abs(pressure_accelerations)))
-        #print(np.mean(np.abs(object_acc)))
-        #print()
-        velocities[i] = velocities[i-1] + dt*(pressure_accelerations+object_acc)
 
+        if central_object:
+            velocities[i] = velocities[i-1] + dt*(accelerations(positions[i], masses, L, h, c_s, rho0)+object_acceleration(positions[i], L, 0.5, 0.1, 1))
+        else:
+            velocities[i] = velocities[i-1] + dt*accelerations(positions[i])
+        """
         # Calculate kinetic energies
         kinetic_energies[i] = 1/2*np.sum(velocities[i]**2, axis=1)
 
         # Calculate internal energies
-        """
+        
         densities = get_densities(positions[i], masses, L, h)
         pressures = get_pressures(densities, c_s, rho0)
 
