@@ -61,3 +61,65 @@ defining $C=0$ we get
 $$
 u =-\frac{B}{\rho_0^\gamma}\left[\frac{\rho^{\gamma-1}}{1-\gamma}-\frac{1}{\rho}\right]
 $$
+
+
+
+### Drag on an object
+The force of drag on an object is given by
+$$
+F = \frac{1}{2}\rho v^2 Ac_\mathrm{D}
+$$
+with $\rho$ the density of the fluid around it, $A$ the object's frontal area, $c_\mathrm{D}$ the object's drag coefficient and $v$ the velocity of the object through the fluid. Then the change in velocity is
+$$
+\frac{\mathrm{d}v}{\mathrm{d}t}=-kv^2
+$$
+with
+$$
+k = \frac{\rho A c_\mathrm{D}}{2m}.
+$$
+We can solve the differential equation through
+$$
+\frac{\mathrm{d}{v}}{v^2}=-k\mathrm{d}t
+$$
+which results in
+$$
+\frac{1}{v_0}-\frac{1}{v}=-k(t-t_0)
+$$
+so the velocity as a function of time is
+$$
+v = \frac{1}{\frac{1}{v_0}+k(t-t_0)}
+$$
+$$
+v=\frac{v_0}{1+kv_0t}
+$$
+where we took $v=v_0$ at $t=0$. The value of $k$ in our simulation becomes
+$$
+k=\frac{\rho}{m}A c_\mathrm{D}=nAc_\mathrm{D}
+$$
+with $n$ the 
+
+
+### Epstein drag
+$$
+F=\frac{4}{3}\rho A v_\mathrm{th}v
+$$
+$$
+\frac{\mathrm{d}v}{\mathrm{d}t}=-kv
+$$
+with
+$$
+k \equiv \frac{4\rho A v_\mathrm{th}}{3m}
+$$
+with $m$ the object's mass, $\rho$ the fluid density, $A$ the object frontal surface area, and $v_\mathrm{th}$ the thermal velocity of particles
+then
+$$
+\frac{\mathrm{d}v}{v}=-k\mathrm{d}t
+$$
+so we get
+$$
+v=v_0 e^{-kt}
+$$
+In our simulation, the density $\rho$ is equivalent to a surface density $\sigma$ divided over an imaginary depth $d$, while the surface area is the diameter of the object $D$ times this same depth, so we get $\rho A=\frac{\sigma}{D}dD=\sigma D$. Now since we are not slowing down the object, but the flow itself, the mass of the object is the total mass of the fluid, which we now can call $m$. Therefore the surface density is $\sigma=m/L^2$ with $L$ the size of the simulation. Using all of this we get
+$$
+k=\frac{4Dv_\mathrm{th}}{3L^2}
+$$
