@@ -122,7 +122,7 @@ def get_pressure_grid(density_grid, c_s, rho0):
     pressure_grid = cole_pressure(density_grid, c_s, rho0, 7)
     return pressure_grid
 
-def accelerations(positions, masses, L, h, c_s, rho0):
+def accelerations(positions, masses, L, h, c_s, rho0,):
     rel_pos, distances = relative_positions(positions, L)
     accelerations = np.zeros_like(positions)
     densities = get_densities(positions, masses, L, h)
@@ -134,7 +134,7 @@ def accelerations(positions, masses, L, h, c_s, rho0):
         accelerations[i] = -np.sum((masses*(pressures/densities**2+pressures[i]/densities[i]**2))[:,None]*nablaW[i],axis=0)
     return accelerations
 
-def animate_particles(positions, masses, L, h, fps=30, file_name="animation.mp4"):
+def animate_particles(positions, masses, L, h, fps=30, central_object=False, file_name="animation.mp4"):
     """Animate the positions of particles in a 2D space.
     Arguments:
         positions: 3D numpy array of shape (no_steps, no_particles, 2) containing the x and y coordinates of the particles.
@@ -153,13 +153,12 @@ def animate_particles(positions, masses, L, h, fps=30, file_name="animation.mp4"
     scatter, = ax.plot(positions[0,:,0], positions[0,:,1], linestyle="None", marker="o", markersize=1, color="red")
     x,y,rho = get_density_grid(positions[0], masses, L, h)
     mesh = ax.pcolor(x,y,rho, cmap="viridis")
-    theta = np.linspace(0,2*np.pi,100)
-    ax.plot(L/2+0.5*np.cos(theta),L/2+0.5*np.sin(theta), color="white")
-    #start = datetime.now()
+    if central_object:
+        theta = np.linspace(0,2*np.pi,100)
+        ax.plot(L/2+0.5*np.cos(theta),L/2+0.5*np.sin(theta), color="white")
+    start = datetime.now()
     def update(frame):
         """Update the scatter plot for each frame."""
-        if frame == 0:
-            start = datetime.now()
         
         scatter.set_xdata(positions[frame,:,0])
         scatter.set_ydata(positions[frame,:,1])
@@ -225,7 +224,7 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
         if central_object:
             velocities[i] = velocities[i-1] + dt*(accelerations(positions[i], masses, L, h, c_s, rho0)+object_acceleration(positions[i], L, 0.5, 0.1, 1))
         else:
-            velocities[i] = velocities[i-1] + dt*accelerations(positions[i])
+            velocities[i] = velocities[i-1] + dt*accelerations(positions[i], masses, L, h, c_s, rho0)
         """
         # Calculate kinetic energies
         kinetic_energies[i] = 1/2*np.sum(velocities[i]**2, axis=1)
