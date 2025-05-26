@@ -123,8 +123,8 @@ def get_pressure_grid(density_grid, c_s, rho0):
     pressure_grid = cole_pressure(density_grid, c_s, rho0, 7)
     return pressure_grid
 
-def accelerations(positions, masses, L, h, c_s, rho0):
-    """Calculates the accelerations of all particles from pressure interactions
+def pressure_forces(positions, masses, L, h, c_s, rho0):
+    """Calculates the forces from pressure on all particles
     Arguments:
         positions (np.ndarray): positions of all particles
         masses (np.ndarray): masses of all particles
@@ -136,62 +136,18 @@ def accelerations(positions, masses, L, h, c_s, rho0):
         accelerations (np.ndarray): accelerations of all particles
     """
     rel_pos, distances = relative_positions(positions, L)
-    accelerations = np.zeros_like(positions)
+    forces = np.zeros_like(positions)
     densities = get_densities(positions, masses, L, h)
     pressures = get_pressures(densities, c_s, rho0)
 
     distances2 = np.where(distances==0, np.inf, distances)
     nablaW = deriv_kernel(distances, h)[:,:,None]*-rel_pos/distances2[:,:,None]
     for i in range(len(positions)):
-        accelerations[i] = -np.sum((masses*(pressures/densities**2+pressures[i]/densities[i]**2))[:,None]*nablaW[i],axis=0)
-    return accelerations
+        forces[i] = -np.sum((masses*(pressures/densities**2+pressures[i]/densities[i]**2))[:,None]*nablaW[i],axis=0)*masses[i]
+    return forces
 
-def animate_particles(positions, masses, L, h, fps=30, central_object=None, file_name="animation.mp4"):
-    """Animates the positions of particles in a 2D space.
-    Arguments:
-        positions (np.ndarray): positions of all particles
-        masses (np.ndarray): masses of all particles
-        L (float): size of the simulation
-        h (float): smoothing length
-        object (dict): optional central object
-        file_name (float): file to which to save the animation
-    """
-    
-
-    no_frames = len(positions)
-
-    fig, ax = plt.subplots()
-    ax.set_xlim(0, L)
-    ax.set_ylim(0, L)
-    ax.set_xlabel("$x$")
-    ax.set_ylabel("$y$")
-    ax.set_aspect("equal")
-    scatter, = ax.plot(positions[0,:,0], positions[0,:,1], linestyle="None", marker="o", markersize=1, color="red")
-    x,y,rho = get_density_grid(positions[0], masses, L, h)
-    mesh = ax.pcolor(x,y,rho, cmap="viridis")
-    if object:
-        theta = np.linspace(0,2*np.pi,100)
-        ax.plot(L/2+central_object["radius"]*np.cos(theta),L/2+central_object["radius"]*np.sin(theta), color="white")
-    start = datetime.now()
-    def update(frame):
-        """Update the scatter plot for each frame."""
-        
-        scatter.set_xdata(positions[frame,:,0])
-        scatter.set_ydata(positions[frame,:,1])
-        x,y,rho = get_density_grid(positions[frame], masses, L, h)
-        mesh.set_array(rho.ravel())
-
-        ttg = (datetime.now() - start)/(frame+1) * (no_frames - frame)
-        print(f"Frame {frame+1} of {no_frames} done, time to go: {ttg}", end="\r")
-        return scatter,mesh
-
-    ani = FuncAnimation(fig, update, frames=no_frames, interval=50)
-    plt.show()
-    ani.save(file_name, fps=fps, extra_args=['-vcodec', 'libx264'], dpi=300)
-    print(f"Animation saved to {file_name}!")
-
-def object_acceleration(positions, L, central_object):
-        """Calculates the accelerations of particles due to the presence of an object.
+def central_object_forces(positions, L, central_object):
+        """Calculates the force of the central object on all particles
         Arguments:
             positions (np.ndarray): positions of all particles
             L (float): size of the simulation
@@ -246,9 +202,9 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
         positions[i] %= L
 
         if central_object:
-            velocities[i] = velocities[i-1] + dt*(accelerations(positions[i], masses, L, h, c_s, rho0)+object_acceleration(positions[i], L, central_object))
+            velocities[i] = velocities[i-1] + dt*(pressure_forces(positions[i], masses, L, h, c_s, rho0)+central_object_forces(positions[i], L, central_object))/masses[:,None]
         else:
-            velocities[i] = velocities[i-1] + dt*accelerations(positions[i], masses, L, h, c_s, rho0)
+            velocities[i] = velocities[i-1] + dt*pressure_forces(positions[i], masses, L, h, c_s, rho0)/masses
         """
         # Calculate kinetic energies
         kinetic_energies[i] = 1/2*np.sum(velocities[i]**2, axis=1)
@@ -270,3 +226,48 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
         ttg = (datetime.now()-start)/i * (no_steps-i)
         print(f"{(i+1)/no_steps*100:.0f}% done, time to go: {ttg}", end="\r")
     return positions, velocities
+
+
+def animate_particles(positions, masses, L, h, fps=30, central_object=None, file_name="animation.mp4"):
+    """Animates the positions of particles in a 2D space.
+    Arguments:
+        positions (np.ndarray): positions of all particles
+        masses (np.ndarray): masses of all particles
+        L (float): size of the simulation
+        h (float): smoothing length
+        object (dict): optional central object
+        file_name (float): file to which to save the animation
+    """
+    
+
+    no_frames = len(positions)
+
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, L)
+    ax.set_ylim(0, L)
+    ax.set_xlabel("$x$")
+    ax.set_ylabel("$y$")
+    ax.set_aspect("equal")
+    scatter, = ax.plot(positions[0,:,0], positions[0,:,1], linestyle="None", marker="o", markersize=1, color="red")
+    x,y,rho = get_density_grid(positions[0], masses, L, h)
+    mesh = ax.pcolor(x,y,rho, cmap="viridis")
+    if object:
+        theta = np.linspace(0,2*np.pi,100)
+        ax.plot(L/2+central_object["radius"]*np.cos(theta),L/2+central_object["radius"]*np.sin(theta), color="white")
+    start = datetime.now()
+    def update(frame):
+        """Update the scatter plot for each frame."""
+        
+        scatter.set_xdata(positions[frame,:,0])
+        scatter.set_ydata(positions[frame,:,1])
+        x,y,rho = get_density_grid(positions[frame], masses, L, h)
+        mesh.set_array(rho.ravel())
+
+        ttg = (datetime.now() - start)/(frame+1) * (no_frames - frame)
+        print(f"Frame {frame+1} of {no_frames} done, time to go: {ttg}", end="\r")
+        return scatter,mesh
+
+    ani = FuncAnimation(fig, update, frames=no_frames, interval=50)
+    plt.show()
+    ani.save(file_name, fps=fps, extra_args=['-vcodec', 'libx264'], dpi=300)
+    print(f"Animation saved to {file_name}!")
