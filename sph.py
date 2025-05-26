@@ -21,11 +21,11 @@ def deriv_kernel(r,h):
 def relative_positions(positions, L):
     """Calculates relative positions and distances between particles.
     Arguments:
-        positions (np.ndarray): The positions of the particles in cartesian space
-        L (float): The size of the simulation space
+        positions (np.ndarray): positions of all particles
+        L (float): size of the simulation
     Returns:
-        rel_positions (np.ndarray): Relative positions of particles
-        rel_distances (np.ndarray): The distance between particles
+        rel_positions (np.ndarray): relative positions of particles
+        rel_distances (np.ndarray): distance between particles
     """
     
     # Calculate NxNxD array for N atoms in D dimensions storing relative positions:
@@ -42,10 +42,10 @@ def relative_positions(positions, L):
 def get_densities(positions, masses, L, h):
     """Calculates the densities at the positions of all particles.
     Arguments:
-        positions (np.ndarray): The particle positions in carthesian space
-        masses (np.ndarray):  The particle masses
-        L (float): the size of the simulation space
-        h (float) the kernel size
+        positions (np.ndarray): positions of all particles
+        masses (np.ndarray):  masses of all particles
+        L (float): size of the simulation
+        h (float) smoothing length
     Returns:
         (np.ndarray): densities at particle positions
     """
@@ -55,14 +55,15 @@ def get_densities(positions, masses, L, h):
 def get_density_grid(positions, masses, L, h, grid_size=100):
     """Calculates the densities on a grid
     Arguments:
-        positions: 2D numpy array of shape (no_particles, 2) containing the x and y coordinates of the particles.
-        h: Smoothing length.
-        L: Length of the box (for periodic boundary conditions).
-        grid_size: Size of the grid for density calculation.
+        positions (np.ndarray): positions of all particles
+        masses (np.ndarray): masses of all particles
+        h (float): smoothing length
+        L (float): size of the simulation
+        grid_size (int): size of the grid for density calculation.
     Returns:
-        x: 1D numpy array of x coordinates of the grid.
-        y: 1D numpy array of y coordinates of the grid.
-        density: 2D numpy array of shape (grid_size, grid_size) containing the density values at each grid point.
+        x (np.ndarray): 1D array of x coordinates of the grid
+        y (np.ndarray): 1D array of y coordinates of the grid.
+        density (np.ndarray): 2D array of shape (grid_size, grid_size) containing the density values at each grid point.
     """
     # Genarate grid
     x = np.linspace(0,L,grid_size)
@@ -89,7 +90,7 @@ def cole_pressure(rho, c_s, rho0, gamma):
         rho (np.ndarray or float): density
         c_s (float): speed of sound
         rho0 (float): reference density
-        gamma (float): adiabatic inde
+        gamma (float): adiabatic index
     Returns:
         (np.ndarray or float): pressure
     """
@@ -117,12 +118,23 @@ def get_pressure_grid(density_grid, c_s, rho0):
         rho0 (float): reference density
         gamma (float): adiabatic inde
     Returns:
-        (np.ndarray or float): pressure grid
+        (np.ndarray): pressure grid
     """
     pressure_grid = cole_pressure(density_grid, c_s, rho0, 7)
     return pressure_grid
 
-def accelerations(positions, masses, L, h, c_s, rho0,):
+def accelerations(positions, masses, L, h, c_s, rho0):
+    """Calculates the accelerations of all particles from pressure interactions
+    Arguments:
+        positions (np.ndarray): positions of all particles
+        masses (np.ndarray): masses of all particles
+        L (float): size of the simulation
+        h (float): smoothing length
+        c_s (float): speed of sound
+        rho0 (float): reference density
+    Returns:
+        accelerations (np.ndarray): accelerations of all particles
+    """
     rel_pos, distances = relative_positions(positions, L)
     accelerations = np.zeros_like(positions)
     densities = get_densities(positions, masses, L, h)
@@ -134,11 +146,15 @@ def accelerations(positions, masses, L, h, c_s, rho0,):
         accelerations[i] = -np.sum((masses*(pressures/densities**2+pressures[i]/densities[i]**2))[:,None]*nablaW[i],axis=0)
     return accelerations
 
-def animate_particles(positions, masses, L, h, fps=30, central_object=False, file_name="animation.mp4"):
-    """Animate the positions of particles in a 2D space.
+def animate_particles(positions, masses, L, h, fps=30, central_object=None, file_name="animation.mp4"):
+    """Animates the positions of particles in a 2D space.
     Arguments:
-        positions: 3D numpy array of shape (no_steps, no_particles, 2) containing the x and y coordinates of the particles.
-        L: Length of the box (for setting limits).
+        positions (np.ndarray): positions of all particles
+        masses (np.ndarray): masses of all particles
+        L (float): size of the simulation
+        h (float): smoothing length
+        object (dict): optional central object
+        file_name (float): file to which to save the animation
     """
     
 
@@ -153,9 +169,9 @@ def animate_particles(positions, masses, L, h, fps=30, central_object=False, fil
     scatter, = ax.plot(positions[0,:,0], positions[0,:,1], linestyle="None", marker="o", markersize=1, color="red")
     x,y,rho = get_density_grid(positions[0], masses, L, h)
     mesh = ax.pcolor(x,y,rho, cmap="viridis")
-    if central_object:
+    if object:
         theta = np.linspace(0,2*np.pi,100)
-        ax.plot(L/2+0.5*np.cos(theta),L/2+0.5*np.sin(theta), color="white")
+        ax.plot(L/2+central_object["radius"]*np.cos(theta),L/2+central_object["radius"]*np.sin(theta), color="white")
     start = datetime.now()
     def update(frame):
         """Update the scatter plot for each frame."""
@@ -174,7 +190,15 @@ def animate_particles(positions, masses, L, h, fps=30, central_object=False, fil
     ani.save(file_name, fps=fps, extra_args=['-vcodec', 'libx264'], dpi=300)
     print(f"Animation saved to {file_name}!")
 
-def object_acceleration(positions, L, R, width, k):
+def object_acceleration(positions, L, central_object):
+        """Calculates the accelerations of particles due to the presence of an object.
+        Arguments:
+            positions (np.ndarray): positions of all particles
+            L (float): size of the simulation
+            central_object (dict): the central object, holding radius, boundary_width and max_force properties
+        Returns:
+            forces (np.ndarray): the forces of the object on all particles
+        """
         dx = positions[:,0] - L/2
         dx = (dx+L/2)%L - L/2
         dy = positions[:,1] - L/2
@@ -183,15 +207,14 @@ def object_acceleration(positions, L, R, width, k):
         nx = dx/distance
         ny = dy/distance
         n = np.column_stack((nx,ny))
-        k = 1000
 
-        strength = 1/(1+np.exp((distance-R)/width))
+        strength = 1/(1+np.exp((distance-central_object["radius"])/central_object["boundary_width"]))
         
-        forces = k*strength[:,None]*n
+        forces = central_object["max_force"]*strength[:,None]*n
         return forces
 
 
-def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt, no_steps, central_object=False):
+def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt, no_steps, central_object=None):
     """Integrate the positions and velocities of particles in a 2D space.
     Arguments:
         initial_positions: 2D numpy array of shape (no_particles, 2) containing the initial x and y coordinates of the particles.
@@ -199,6 +222,7 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
         L: Length of the box (for periodic boundary conditions).
         dt: Time step for integration.
         no_steps: Number of time steps to integrate.
+        central_object (dict): properties of an optional central object
     Returns:
         positions: 3D numpy array of shape (no_steps, no_particles, 2) containing the x and y coordinates of the particles at each time step.
         velocities: 3D numpy array of shape (no_steps, no_particles, 2) containing the x and y velocities of the particles at each time step.
@@ -222,7 +246,7 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
         positions[i] %= L
 
         if central_object:
-            velocities[i] = velocities[i-1] + dt*(accelerations(positions[i], masses, L, h, c_s, rho0)+object_acceleration(positions[i], L, 0.5, 0.1, 1))
+            velocities[i] = velocities[i-1] + dt*(accelerations(positions[i], masses, L, h, c_s, rho0)+object_acceleration(positions[i], L, central_object))
         else:
             velocities[i] = velocities[i-1] + dt*accelerations(positions[i], masses, L, h, c_s, rho0)
         """
