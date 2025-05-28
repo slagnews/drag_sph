@@ -2,61 +2,6 @@
 #include <vector>
 #include <array>
 #include <cmath>
-/*
-enum class ParticleType {
-	flow, in, out, ghost
-};
-
-struct Particle {
-	std::array<double, 2> pos, vel, acc;
-	double mass, rho, pressure;
-	ParticleType type;
-};
-
-class SPHSimulation {
-	public:
-		std::vector<Particle> particles;
-};
-*/
-
-// Declare simulation parameters
-double Lx, Ly, h, v0, dt, c_s, gamma_index, rc;
-int no_particles, nCells, no_steps;
-std::array<int, 2> nc;
-
-// Vector of the particle positions
-std::vector<std::array<double, 2>> positions;
-
-// Linked list data
-std::vector<int> head;
-std::vector<int> lscl;
-
-const int EMPTY = -1;
-
-// Helper functions
-std::array<int, 2> get_cell_index(const std::array<double, 2>& pos) {
-	return { int(pos[0] / rc), int(pos[1] / rc) };
-}
-
-int vec_to_scalar_index(int cx, int cy) {
-	return cx * nc[1] + cy;
-}
-
-// Constructing the linked list for departmentalization
-void construct_linked_list() {
-	head.assign(nCells, EMPTY);
-	lscl.assign(no_particles, EMPTY);
-
-	for (int i = 0; i < no_particles; ++i) {
-		auto cell = get_cell_index(positions[i]);
-		int cx = cell[0];
-		int cy = cell[1];
-		int c = vec_to_scalar_index(cx, cy);
-
-		lscl[i] = head[c];
-		head[c] = i;
-    }
-}
 
 struct Vec2 {
 	double x, y;
@@ -118,7 +63,74 @@ struct Vec2 {
 	double norm() const {
 		return sqrt(pow(x, 2) + pow(y, 2));
 	}
+
+	double dist(const Vec2& other) const {
+		return sqrt(pow(x-other.x, 2) + pow(y-other.y, 2));
+	}
 };
+
+
+enum class ParticleType {
+	flow, in, out, ghost
+};
+
+struct Particle {
+	Vec2 pos, vel, acc;
+	double mass, rho, pressure;
+	ParticleType type;
+};
+
+class SPHSimulation {
+	public:
+		double c_s;
+		double gamma_index;
+		double rho0;
+		std::vector<Particle> particles;
+
+	void compute_pressure() {
+
+	}
+};
+
+
+// Declare simulation parameters
+double Lx, Ly, h, v0, dt, c_s, gamma_index, rc rho0;
+int no_particles, nCells, no_steps;
+std::array<int, 2> nc;
+
+// Vector of the particle positions
+std::vector<std::array<double, 2>> positions;
+
+// Linked list data
+std::vector<int> head;
+std::vector<int> lscl;
+
+const int EMPTY = -1;
+
+// Helper functions
+std::array<int, 2> get_cell_index(const std::array<double, 2>& pos) {
+	return { int(pos[0] / rc), int(pos[1] / rc) };
+}
+
+int vec_to_scalar_index(int cx, int cy) {
+	return cx * nc[1] + cy;
+}
+
+// Constructing the linked list for departmentalization
+void construct_linked_list() {
+	head.assign(nCells, EMPTY);
+	lscl.assign(no_particles, EMPTY);
+
+	for (int i = 0; i < no_particles; ++i) {
+		auto cell = get_cell_index(positions[i]);
+		int cx = cell[0];
+		int cy = cell[1];
+		int c = vec_to_scalar_index(cx, cy);
+
+		lscl[i] = head[c];
+		head[c] = i;
+    }
+}
 
 double kernel(Vec2 r_vec, double h) {
 	double r = r_vec.norm();
@@ -160,6 +172,11 @@ double deriv_kernel(Vec2 r_vec, double h) {
 	}
 }
 
+double cole_pressure(double rho, double c_s, double rho0, double gamma_index) {
+	double B = pow(c_s, 2)*rho0/gamma_index;
+	return B*(pow(rho/rho0, gamma_index)-1);
+}
+
 
 int main(int argc, char *argv[]) {
 	if (argc >= 2) {
@@ -182,14 +199,26 @@ int main(int argc, char *argv[]) {
 
 	construct_linked_list();
 
-	Vec2 part_pos{3, 4};
-	
-	for (int i=0; i<5; i++) {
-		part_pos += v0;
-		std::cout << part_pos.x << std::endl;
-		std::cout << part_pos.y << std::endl;
-		std::cout << part_pos.norm() << std::endl;
-	}
+	SPHSimulation sim;
+	Particle p1, p2;
+
+	p1.pos = {1, 1};
+	p1.vel = {1, 0};
+	p1.acc = {0, 0};
+	p1.mass = 1.0;
+	p1.rho = 0;
+	p1.pressure = 0;
+	p1.type = ParticleType::flow;
+	sim.particles.push_back(p1);
+
+	p2.pos = {2, 1};
+	p2.vel = {-1, 0};
+	p2.acc = {0, 0};
+	p2.mass = 1.0;
+	p2.rho = 0;
+	p2.pressure = 0;
+	p2.type = ParticleType::flow;
+	sim.particles.push_back(p2);
 
 	return 0;
 }
