@@ -61,6 +61,21 @@ std::vector<T> reorder(const std::vector<T>& input, const std::vector<int>& indi
 	return output;
 }
 
+std::vector<int> get_cell_start(int no_particles, int no_cells, const std::vector<int>& indices, const std::vector<int>& cell_idx) {
+	std::vector<int> cell_counts(no_cells, 0);
+	
+	for (int i=0; i<no_particles; i++) {
+		int cell = cell_idx[indices[i]];
+		cell_counts[cell]++;
+	}
+	
+	std::vector<int> cell_start(no_cells + 1, 0);
+	for (int c=0; c < no_cells; c++) {
+		cell_start[c+1] = cell_start[c] + cell_counts[c];
+	}
+	return cell_start;
+}
+
 
 /*
 double kernel(std::array<double, 2> r_vec, double h) {
@@ -130,21 +145,23 @@ int main(int argc, char *argv[]) {
 	
 	double particle_mass = Lx*Ly*rho0/2;
 
-	ParticleList pl = {{1.2, 8, 5.5}, {4, 4, 6.2}, {particle_mass, particle_mass, particle_mass}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
-	
-	std::cout << pl.pos_x[0] << std::endl;
-	std::cout << pl.pos_x[1] << std::endl;
-	std::cout << pl.pos_x[2] << std::endl << std::endl;
+	ParticleList pl = {{1.2, 1.2, 5.5}, {8, 8, 6.2}, {particle_mass, particle_mass, particle_mass}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
 	
 	assign_cell(pl);
 	auto indices = sorter(no_particles, pl);
 	pl.pos_x = reorder(pl.pos_x, indices);
+	auto cell_start = get_cell_start(no_particles, no_cells, indices, pl.cell_idx);
 	
-	std::cout << pl.pos_x[0] << std::endl;
-	std::cout << pl.pos_x[1] << std::endl;
-	std::cout << pl.pos_x[2] << std::endl;
+	std::cout << pl.cell_idx[0] << std::endl;
+	std::cout << pl.cell_idx[1] << std::endl;
+	std::cout << pl.cell_idx[2] << std::endl;
 	
+	int start = cell_start[18];
+	int end = cell_start[18+1];
 	
+	for (int i=start; i<end; i++) {
+		std::cout << pl.pos_x[i] << std::endl;
+	}
 
 	return 0;
 }
