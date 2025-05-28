@@ -94,7 +94,7 @@ class SPHSimulation {
 
 
 // Declare simulation parameters
-double Lx, Ly, h, v0, dt, c_s, gamma_index, rc rho0;
+double Lx, Ly, h, v0, dt, c_s, gamma_index, rc, rho0;
 int no_particles, nCells, no_steps;
 std::array<int, 2> nc;
 
