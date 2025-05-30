@@ -3,27 +3,33 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
+#include <random>
 #include <numeric>
 
 struct SimulationParams {
-	double Lx, Ly, h, rc, v0, dt, c_s, gamma_index, rho0;
-	int no_particles, no_cells, no_steps;
+	double res, Lx, Ly, kappa, h, rc, v0, dt, c_s, gamma_index, rho0;
+	int no_cells, no_steps, Nx, Ny, init_particles;
 	std::array<int, 2> nc;
 	
-	SimulationParams(int no_steps, double Lx, double Ly, double rho0, double h, double v0, double dt, double c_s, double gamma_index)
-		: no_steps(no_steps),
+	SimulationParams(double res, int no_steps, double Lx, double Ly, double rho0, double kappa, double v0, double dt, double c_s, double gamma_index)
+		: res(res),
+		  no_steps(no_steps),
 		  Lx(Lx),
 		  Ly(Ly),
 		  rho0(rho0),
-		  h(h),
+		  kappa(kappa),
 		  v0(v0),
 		  dt(dt),
 		  c_s(c_s),
 		  gamma_index(gamma_index)
 	{
+		h = kappa*res;
 		rc = 2*h;
-		nc = {int(Lx/rc), int(Ly/rc)};
+		nc = { int(std::ceil(Lx / rc)), int(std::ceil(Ly / rc)) };
 		no_cells = nc[0] * nc[1];
+		Nx = int(Lx/res);
+		Ny = int(Ly/res);
+		init_particles = Nx*Ny;
 	}
 };
 
@@ -33,22 +39,32 @@ struct ParticleList {
 	const SimulationParams& params;
 	
 	// Particle information vectors
-	std::vector<double> pos_x, pos_y, mass, rho, pressure;
+	std::vector<double> pos_x, pos_y, vel_x, vel_y, mass, rho, pressure;
 	std::vector<int> cell_idx, indices, cell_counts, cell_start;
 	
+	// Randomizer generator and distribution
+	std::mt19937 engine;
+	std::uniform_real_distribution<double> init_x_dist;
+	std::uniform_real_distribution<double> init_y_dist;
+	
 	// Constructor
-	ParticleList(int no_particles,  const SimulationParams& p)
+	ParticleList(const SimulationParams& p)
 		: params(p),
-		  no_particles(no_particles),
-		  pos_x(no_particles),
-		  pos_y(no_particles),
-		  mass(no_particles),
-		  rho(no_particles),
-		  pressure(no_particles),
-		  cell_idx(no_particles),
-		  indices(no_particles),
+		  no_particles(p.init_particles),
+		  pos_x(p.init_particles),
+		  pos_y(p.init_particles),
+		  vel_x(p.init_particles),
+		  vel_y(p.init_particles),
+		  mass(p.init_particles),
+		  rho(p.init_particles),
+		  pressure(p.init_particles),
+		  cell_idx(p.init_particles),
+		  indices(p.init_particles),
 		  cell_counts(p.no_cells),
-		  cell_start(p.no_cells+1) {}
+		  cell_start(p.no_cells+1),
+		  engine(std::random_device{}()),
+		  init_x_dist(0, p.Lx),
+		  init_y_dist(0, p.Ly) {}
 		  
 	// Helper functions
 	std::array<int, 2> get_cell_index(double x, double y) {
@@ -56,7 +72,39 @@ struct ParticleList {
 	}
 
 	int vec_to_scalar_index(int cx, int cy) {
-		return cx * params.nc[1] + cy;
+		return cx + params.nc[0] * cy;
+	}
+	
+	void init_random() {
+	// Randomize the x and y positions over the whole domain
+		for (size_t i=0; i<no_particles; ++i) {
+			pos_x[i] = init_x_dist(engine);
+			pos_y[i] = init_y_dist(engine);
+		}
+	}
+	
+	void init_grid() {
+		int index = 0;
+		for (size_t i=0; i<params.Nx; ++i) {
+			for (size_t j=0; j<params.Ny; ++j) {
+				pos_x[index] = i*params.res;
+				pos_y[index] = j*params.res;
+				++index;
+			}
+		}
+	}
+	
+	void init_mass() {
+		for (int i=0; i<no_particles; ++i) {
+			mass[i] = params.rho0*params.res*params.res;
+		}
+	}
+	
+	void init_vel() {
+		for (int i=0; i<no_particles; ++i) {
+			vel_x[i] = params.v0;
+			vel_y[i] = 0;
+		}
 	}
 	
 	void assign_cell() {
@@ -133,18 +181,24 @@ int main(int argc, char *argv[]) {
 	}
 	
 	SimulationParams params(
+		atof(argv[1]), // res
 		atoi(argv[2]), // no_steps
 		atof(argv[3]), // Lx
 		atof(argv[4]), // Ly
 		atof(argv[5]), // rho0
-		atof(argv[6]), // h
+		atof(argv[6]), // kappa
 		atof(argv[7]), // v0
 		atof(argv[8]), // dt
 		atof(argv[9]), // c_s
 		atof(argv[10]) // gamma_index
 	);
 	
-	ParticleList pl(atoi(argv[1]), params); // Where argv[1] = no_particles
+	ParticleList pl(params);
+	
+	pl.init_grid();
+	pl.init_mass();
+	pl.init_vel();
+	std::cout << pl.vel_x[0] << std::endl;
 	
 	return 0;
 }
