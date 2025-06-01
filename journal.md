@@ -154,6 +154,56 @@ Optional:
 
 ## Week 3
 (due 3 June 2025, 11:00)
+### Tweaked simulation parameters
+By tweaking the simulation parameters, the drag already became more like what we expect for a continuous fluid. Using 1000 particles with a smoothing length of 1, thermal velocities of 1, initial flow speed of 10 in a box of 10x10 and a speed of sound of 0.1, an object of radius 1, and max force 1000, the results below were obtained.
+![drag_gaussian](figures/drag_gaussian.png)
+The fit with Stokes drag already seems to be better than the Epstein fit.
+
+After implementing a quintic spline kernel (see below for more), the results changed a bit, but not by much
+![drag_spline](figures/drag_spline.png)
+
+### Spline kernel
+We switched from a Gaussian kernel to a quintic spline kernel, as used by Korzani et al. (2017). The equation is given by
+$$
+W(r,h)=
+\begin{cases}
+\alpha_\mathrm{d}\left[(3-r/h)^5-6(2-r/h)^5+15(1-q)^5\right], \quad 0\leq r/h < 1,\\
+\alpha_\mathrm{d}\left[(3-r/h)^5-6(2-r/h)^5\right], \quad 1\leq r/h < 2,\\
+\alpha_\mathrm{d}(3-r/h)^5, \quad 2\leq r/h < 3,\\
+0, \quad r/h \geq 3,
+\end{cases}
+$$
+with the normalization constant in 2d
+$$
+\alpha_\mathrm{d}=\frac{7}{478\pi h^2}.
+$$
+Note that the normalization constant in Korzani et al. is incorrectly given as $\frac{7}{47\pi h^2}$, which does not yield correct normalization, probably due to a typo simply forgetting the $8$.
+
+A spline kernel is preferred over a Gaussian for multiple reasons. A Gaussian has infinite extent, which violates locality in the simulation: particles at vast distances still interact with eachother. Apart from that, finite kernels allow for numerical optimization, as one does not have to take into account all particles in the simulation, leading to $\mathcal{O}(n^2)$ computation time. Instead computations can be done at $\mathcal{O}(mn)$ time, with $m$ the number of particles in reach of a certain particle. We have not implemented such an algorithm in our Python code just yet, but it is already implemented in the C++ code that we plan on switching to later.
+
+### Modified ideal gas law
+We have been using the cole equation of state up to now, which is given by
+
+$$
+P=B\left(\left(\frac{\rho}{\rho_0}\right)^\gamma-1\right)
+$$
+with $B=c_\mathrm{s}^2\rho_0/\gamma$. This equation of state is often used to model poorly compressible fluids. However it can lead to numerical instability when the density is lower than the reference density $\rho_0$: the pressure becomes negative, particles start attracting eachother, leading to clumping and instabilities. This can be seen blow.
+![cole_clustering](figures/cole_clustering.png)
+We initialized particles uniformly, but with an average density much lower than $\rho_0$ and it lead to this clustering.
+
+In literature modified versions of the ideal gas law are often used. In Korzani et al. they use
+$$
+P=P_0+c_\mathrm{s}^2\left(\rho-\rho_0\right)
+$$
+with $c_\mathrm{s}$ the speed of sound, $\rho$ the density and $P_0$ and $\rho_0$ a reference pressure and density respectively. These references are added for numerical stability, for example to avoid negative pressures which again lead to clustering. In Korzani the reference pressure is defined as
+$$
+P_0=\beta c_\mathrm{s}^2\rho_0
+$$
+where $\beta$ is a coefficient that is tweaked to get stable results, they use 0.07. The reference density is simply set to the average density in the simulation.
+
+The same simulation as above was run, but now with this modified ideal gas law, and the result can be seen below.
+![drag_ideal](figures/drag_ideal_gaslaw.png)
+We can again see that the results are very close, so this new equation of state seems to work as expected.
 
 
 ## Reminder final deadline

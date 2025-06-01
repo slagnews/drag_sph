@@ -26,7 +26,65 @@ v_{ij}\equiv v_i-v_j
 $$
 and $\nabla_i$ the derivative at position $\mathbf{r}_i$.
 
-### Internal energy from EOS
+## Kernel derivative
+To calculate the force on a particle $i$ we need
+$$
+\nabla_i W_{ij}=\nabla_i W(|\mathbf{r}_i-\mathbf{r}_j|,h)
+$$
+Where $\nabla_i$ is the derivative with respect to the coordanates of $i$, so we have
+$$
+\mathbf{r}_i=
+\begin{pmatrix}
+x_i\\
+y_i\\
+z_i
+\end{pmatrix}
+$$
+so we get
+$$
+\nabla_i W_{ij}=
+\begin{pmatrix}
+\partial/\partial x_i\\
+\partial/\partial y_i\\
+\partial/\partial z_i
+\end{pmatrix}
+W(r,h)
+$$
+with
+$$
+r=\sqrt{(x_i-x_j)^2+(y_i-y_j)^2+(z_i-z_j^2)}.
+$$
+So using the chain rule we get
+$$
+\nabla_i W_{ij}=
+\frac{\partial W_{ij}}{\partial r}\nabla_i r
+$$
+And we have
+$$
+\nabla_i r=
+\begin{pmatrix}
+\partial/\partial x_i\\
+\partial/\partial y_i\\
+\partial/\partial z_i
+\end{pmatrix}
+\sqrt{(x_i-x_j)^2+(y_i-y_j)^2+(z_i-z_j^2)}
+=
+\frac{1}{r}
+\begin{pmatrix}
+x_i-x_j\\
+y_i-y_j\\
+z_i-z_j
+\end{pmatrix}
+=
+\hat{\mathbf{r}_{ij}}
+$$
+so we have
+$$
+\nabla_i W_{ij}=\nabla_i W(|\mathbf{r}_i-\mathbf{r}_j|,h)=\frac{\mathbf{r}_j-\mathbf{r}_i}{|\mathbf{r}_i-\mathbf{r}_j|}\frac{\mathrm{d}W_{ij}}{\mathrm{d}r}
+$$
+
+
+## Internal energy from EOS
 The kinetic energy of the system is easily calculated from
 $$
 K = \frac{1}{2}\sum_i m_i \mathbf{v}_i^2
@@ -64,7 +122,7 @@ $$
 
 
 
-### Drag on an object
+## Drag on an object
 The force of drag on an object is given by
 $$
 F = \frac{1}{2}\rho v^2 Ac_\mathrm{D}
