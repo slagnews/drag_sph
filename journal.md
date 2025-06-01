@@ -181,6 +181,32 @@ Note that the normalization constant in Korzani et al. is incorrectly given as $
 
 A spline kernel is preferred over a Gaussian for multiple reasons. A Gaussian has infinite extent, which violates locality in the simulation: particles at vast distances still interact with eachother. Apart from that, finite kernels allow for numerical optimization, as one does not have to take into account all particles in the simulation, leading to $\mathcal{O}(n^2)$ computation time. Instead computations can be done at $\mathcal{O}(mn)$ time, with $m$ the number of particles in reach of a certain particle. We have not implemented such an algorithm in our Python code just yet, but it is already implemented in the C++ code that we plan on switching to later.
 
+This new kernel also satisfies mass conservation better: the infinitely extending kernel extends beyond 2 images of the simulation box (due to periodic bounadry conditions), therefore the integrated density was quite a bit less than the sum of masses. With this new method this difference is a factor of 10 less (the remaining difference probably also due to some numerical integration errors)
+
+### Energy conservation
+The energy of the simulation is purely kinetic. We can split it up in the kinetic energy of the bulk motion of the flow and the "thermal" energy from motion of the particles. Furthermore we have a central object that exterts a force
+$$
+F_\mathrm{object}=\frac{F_\mathrm{max}}{1+\exp{\frac{r-R}{w}}}
+$$
+with $F_\mathrm{max}$ the maximum force of the object, $r$ the distance of a particle to the center of the object, $R$ the radius of the object, and $w$ the width/smoothness of the object's boundary. This causes a potential on the particles that is found from integrating this force
+$$
+E_\mathrm{object}=wF_\mathrm{max}\ln{\left(e^\frac{R-r}{w}+1\right)}.
+$$
+The total energy is just the sum of the kinetic energy and the potential energy from this object. The bulk motion is just the average velocity of all particles squared times the total mass. The flow energy is found from subtracting the mean velocity of all particles from the velocity of each particle, and then summing the square of that:
+$$
+E_\mathrm{th}=\frac{1}{2}\sum_{i}m_i(\mathbf{v}_i-\overline{\mathbf{v}})^2
+$$
+with
+$$
+E_\mathrm{flow}=\frac{1}{2}\overline{\mathbf{v}}^2\sum_i m_i
+$$
+The result is shown below
+![energy](figures/energy_euler.png)
+We can see that the potential energy decreases at first, because some particles are initialized inside of the object and move out during the first iterations. The total energy has a kind of bump there, maybe because there is a one-iteration offset between the potential and the kinetic, but it recovers the initial value. After the particles have moved out of the object, total energy is approximately conserved, and flow enenergy is traded for thermal energy as the object slows down the flow through drag.
+
+We can see just the total energy below
+![total_energy](figures/total_energy_euler.png)
+We can see that it slowly increases: from $62866.6 \pm 6.0$ between timestamp 100 and 200 to $63305.2 \pm 7.3$ in the final 100 iterations. This probably because we still use a simple Euler forward integration scheme
 ### Modified ideal gas law
 We have been using the cole equation of state up to now, which is given by
 
