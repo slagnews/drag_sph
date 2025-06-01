@@ -107,31 +107,6 @@ def ideal_pressure(rho, c_s, rho0, beta=0.07):
     """
     return beta*c_s**2*rho0 + c_s**2*(rho-rho0)
 
-def get_pressures(rho, c_s, rho0):
-    """Calculates the pressures at all particle positions
-    Arguments:
-        rho (np.ndarray): densities at particle positions
-        c_s (float): speed of sound
-        rho0 (float): reference density
-        gamma (float): adiabatic index
-    Returns:
-        (np.ndarray): pressures at particle positions
-    """
-    pressures = ideal_pressure(rho, c_s, rho0)
-    return pressures
-
-def get_pressure_grid(density_grid, c_s, rho0):
-    """Calculates the pressures on a grid
-    Arguments:
-        rho (np.ndarray): density grid
-        c_s (float): speed of sound
-        rho0 (float): reference density
-        gamma (float): adiabatic inde
-    Returns:
-        (np.ndarray): pressure grid
-    """
-    pressure_grid = ideal_pressure(density_grid, c_s, rho0)
-    return pressure_grid
 
 def get_pressure_forces(positions, masses, L, h, c_s, rho0):
     """Calculates the forces from pressure on all particles
@@ -148,7 +123,7 @@ def get_pressure_forces(positions, masses, L, h, c_s, rho0):
     rel_pos, distances = relative_positions(positions, L)
     forces = np.zeros_like(positions)
     densities = get_densities(positions, masses, L, h)
-    pressures = get_pressures(densities, c_s, rho0)
+    pressures = ideal_pressure(densities, c_s, rho0)
 
     distances2 = np.where(distances==0, np.inf, distances)
     nablaW = deriv_kernel(distances, h)[:,:,None]*-rel_pos/distances2[:,:,None]
@@ -199,13 +174,10 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
     no_particles = initial_positions.shape[0]
     positions = np.zeros((no_steps, no_particles, 2))
     velocities = np.zeros((no_steps, no_particles, 2))
-    #kinetic_energies = np.zeros((no_steps, no_particles))
-    #internal_energies = np.zeros((no_steps, no_particles))
 
     # Set initial conditions
     positions[0] = initial_positions
     velocities[0] = initial_velocities
-    #kinetic_energies[0] = 1/2*np.sum(velocities[0]**2, axis=1)
     
     for i in range(1, no_steps):
         positions[i] = positions[i-1] + velocities[i-1] * dt
