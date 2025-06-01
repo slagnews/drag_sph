@@ -245,7 +245,10 @@ The results change, and energy is much less conserved, as can be seen below
 ![euler_forward](figures/energy_euler_forward.png)
 Since the proper euler forward works very badly, and we cannot really justify the method with the mistake we were using earlier, we will switch to Leapfrog integration, which we were planning on anyways, since it is symplectic.
 
-
+After implementing the Leapfrog scheme, we ran a simulation that took 10x as long, and our result can be seen below
+![leapfrog_energy](figures/energy_leapfrog.png)
+![leapfrog_total](figures/total_energy_leapfrog.png)
+We can see that the total energy is not exactly conserved, which we are not yet sure of why this is, so we'll be looking into this
 
 ## Reminder final deadline
 
