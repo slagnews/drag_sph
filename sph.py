@@ -78,7 +78,7 @@ def get_density_grid(positions, masses, L, h, grid_size=100):
         y (np.ndarray): 1D array of y coordinates of the grid.
         density (np.ndarray): 2D array of shape (grid_size, grid_size) containing the density values at each grid point.
     """
-    # Genarate grid
+    # Generate grid
     x = np.linspace(0,L,grid_size)
     y = np.linspace(0,L,grid_size)
     X,Y = np.meshgrid(x,y)
@@ -86,10 +86,8 @@ def get_density_grid(positions, masses, L, h, grid_size=100):
     # Apply periodic boundary conditions to distances
     dx = (X[:,:,None]-positions[:,0])
     dx = (dx+L/2)%L - L/2
-    #dy = dx - L*np.round(dx/L)
-    dy = (Y[:,:,None]-positions[:,1])#%L
+    dy = (Y[:,:,None]-positions[:,1])
     dy = (dy+L/2)%L - L/2
-    #dy = dy - L * np.round(dy / L)
 
     distances = np.sqrt(dx**2+dy**2)
 
@@ -97,18 +95,17 @@ def get_density_grid(positions, masses, L, h, grid_size=100):
     density = np.sum(masses*kernel(distances, h), axis=2)
     return x,y,density
 
-def cole_pressure(rho, c_s, rho0, gamma):
-    """Calculates the pressure from the Cole Equation of State
+def ideal_pressure(rho, c_s, rho0, beta=0.07):
+    """Calculates the pressure from a modified ideal gas law
     Arguments:
-        rho (np.ndarray or float): density
+        rho (np.ndarray): density
         c_s (float): speed of sound
         rho0 (float): reference density
-        gamma (float): adiabatic index
+        beta (float): coefficient for numerical stability
     Returns:
-        (np.ndarray or float): pressure
+        (np.ndarray): pressure
     """
-    B = c_s**2*rho0/gamma
-    return B*((rho/rho0)**gamma-1)
+    return beta*c_s**2*rho0 + c_s**2*(rho-rho0)
 
 def get_pressures(rho, c_s, rho0):
     """Calculates the pressures at all particle positions
@@ -120,7 +117,7 @@ def get_pressures(rho, c_s, rho0):
     Returns:
         (np.ndarray): pressures at particle positions
     """
-    pressures = cole_pressure(rho, c_s, rho0, 7)
+    pressures = ideal_pressure(rho, c_s, rho0)
     return pressures
 
 def get_pressure_grid(density_grid, c_s, rho0):
@@ -133,7 +130,7 @@ def get_pressure_grid(density_grid, c_s, rho0):
     Returns:
         (np.ndarray): pressure grid
     """
-    pressure_grid = cole_pressure(density_grid, c_s, rho0, 7)
+    pressure_grid = ideal_pressure(density_grid, c_s, rho0)
     return pressure_grid
 
 def get_pressure_forces(positions, masses, L, h, c_s, rho0):
@@ -218,24 +215,6 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
             velocities[i] = velocities[i-1] + dt*(get_pressure_forces(positions[i], masses, L, h, c_s, rho0)+central_object_forces(positions[i], L, central_object))/masses[:,None]
         else:
             velocities[i] = velocities[i-1] + dt*get_pressure_forces(positions[i], masses, L, h, c_s, rho0)/masses
-        """
-        # Calculate kinetic energies
-        kinetic_energies[i] = 1/2*np.sum(velocities[i]**2, axis=1)
-
-        # Calculate internal energies
-        
-        densities = get_densities(positions[i], masses, L, h)
-        pressures = get_pressures(densities, c_s, rho0)
-
-        distances, rel_pos = relative_positions(positions[i], L)
-        distances2 = np.where(distances==0, np.inf, distances) 
-        nablaW = deriv_kernel(distances, h)[:,:,None]*-rel_pos/distances2[:,:,None]
-        for j in range(no_particles):
-            dv = velocities[j] - velocities
-            
-            dudt = pressures[j]/densities[j]**2+np.sum(masses*(dv[0]*nablaW[j,:,0]+dv[1]*nablaW[j,:,0]))
-            internal_energies[i,j] += dudt*dt
-        """
         ttg = (datetime.now()-start)/i * (no_steps-i)
         print(f"{(i+1)/no_steps*100:.0f}% done, time to go: {ttg}", end="\r")
     return positions, velocities
