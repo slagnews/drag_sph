@@ -6,17 +6,30 @@ from datetime import datetime
 np.random.seed(0)
 
 def kernel(r,h):
-    """Compute the kernel function for SPH.
+    """Compute the quintic spline kernel function for SPH
     Arguments:
-        r: distance
-        h: Smoothing length.
+        r (float or np.ndarray): distance
+        h (float): smoothing length.
     Returns:
-        Kernel value.
+        (float or np.ndarray): kernel value.
     """
-    return 1/(2*np.pi*h**2)*np.exp(-0.5*(r/h)**2)
+    return 7/(478*np.pi*h**2)*(
+        np.maximum(3-r/h, 0)**5
+        - 6*np.maximum(2-r/h,0)**5
+        + 15*np.maximum(1-r/h,0)**5)
 
 def deriv_kernel(r,h):
-    return -r/(2*np.pi*h**4)*np.exp(-0.5*(r/h)**2)
+    """Compute the derivative of the quintic spline kernel with respect to r
+    Arguments:
+        r (float or np.ndarray): distance
+        h (float): smoothing length.
+    Returns:
+        (float or np.ndarray): derivative value.
+    """
+    return 7/(478*np.pi*h**2)*(
+        - 5*np.maximum(3-r/h,0)**4
+        + 30*np.maximum(2-r/h,0)**4
+        - 75*np.maximum(1-r/h,0)**4)
 
 def relative_positions(positions, L):
     """Calculates relative positions and distances between particles.
@@ -123,7 +136,7 @@ def get_pressure_grid(density_grid, c_s, rho0):
     pressure_grid = cole_pressure(density_grid, c_s, rho0, 7)
     return pressure_grid
 
-def pressure_forces(positions, masses, L, h, c_s, rho0):
+def get_pressure_forces(positions, masses, L, h, c_s, rho0):
     """Calculates the forces from pressure on all particles
     Arguments:
         positions (np.ndarray): positions of all particles
@@ -202,9 +215,9 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
         positions[i] %= L
 
         if central_object:
-            velocities[i] = velocities[i-1] + dt*(pressure_forces(positions[i], masses, L, h, c_s, rho0)+central_object_forces(positions[i], L, central_object))/masses[:,None]
+            velocities[i] = velocities[i-1] + dt*(get_pressure_forces(positions[i], masses, L, h, c_s, rho0)+central_object_forces(positions[i], L, central_object))/masses[:,None]
         else:
-            velocities[i] = velocities[i-1] + dt*pressure_forces(positions[i], masses, L, h, c_s, rho0)/masses
+            velocities[i] = velocities[i-1] + dt*get_pressure_forces(positions[i], masses, L, h, c_s, rho0)/masses
         """
         # Calculate kinetic energies
         kinetic_energies[i] = 1/2*np.sum(velocities[i]**2, axis=1)
