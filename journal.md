@@ -250,6 +250,11 @@ After implementing the Leapfrog scheme, we ran a simulation that took 10x as lon
 ![leapfrog_total](figures/total_energy_leapfrog.png)
 We can see that the total energy is not exactly conserved, which we are not yet sure of why this is, so we'll be looking into this
 
+### $c_\mathrm{d}$ vs. time
+In the paper we are trying to recreate, they show the drag coefficient as a function of the simulation time. They show that it is very high at the start, but quickly converges to a constant value. We did the same and the result is show below
+![cd_vs_t](figures/cd_vs_t.png)
+We also see a decrease in the drag coefficient, but not as sharply and it does not quite seem to converge. For us it might also decrease because the entire flow slows down (periodic boundary conditions). Also we do not yet have viscosity which is an important effect for drag.
+
 ## Reminder final deadline
 
 The deadline for project 3 is **9 June 23:59**. By then, you must have uploaded the presentation slides to the repository, and the repository must contain the latest version of the code.
