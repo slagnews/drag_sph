@@ -52,7 +52,7 @@ def relative_positions(positions, L):
 
     return rel_positions, rel_distances
 
-def get_densities(positions, masses, L, h):
+def get_densities(relative_distances, masses, h):
     """Calculates the densities at the positions of all particles.
     Arguments:
         positions (np.ndarray): positions of all particles
@@ -62,8 +62,7 @@ def get_densities(positions, masses, L, h):
     Returns:
         (np.ndarray): densities at particle positions
     """
-    rel_pos, rel_dist = relative_positions(positions, L)
-    return np.sum(masses*kernel(rel_dist, h), axis=1)
+    return np.sum(masses*kernel(relative_distances, h), axis=1)
 
 def get_density_grid(positions, masses, L, h, grid_size=100):
     """Calculates the densities on a grid
@@ -122,7 +121,7 @@ def get_pressure_forces(positions, masses, L, h, c_s, rho0):
     """
     rel_pos, distances = relative_positions(positions, L)
     forces = np.zeros_like(positions)
-    densities = get_densities(positions, masses, L, h)
+    densities = get_densities(distances, masses, h)
     pressures = ideal_pressure(densities, c_s, rho0)
 
     distances2 = np.where(distances==0, np.inf, distances)
