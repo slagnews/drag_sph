@@ -207,6 +207,7 @@ We can see that the potential energy decreases at first, because some particles 
 We can see just the total energy below
 ![total_energy](figures/total_energy_euler.png)
 We can see that it slowly increases: from $62866.6 \pm 6.0$ between timestamp 100 and 200 to $63305.2 \pm 7.3$ in the final 100 iterations. This probably because we still use a simple Euler forward integration scheme
+
 ### Modified ideal gas law
 We have been using the cole equation of state up to now, which is given by
 
@@ -230,6 +231,20 @@ where $\beta$ is a coefficient that is tweaked to get stable results, they use 0
 The same simulation as above was run, but now with this modified ideal gas law, and the result can be seen below.
 ![drag_ideal](figures/drag_ideal_gaslaw.png)
 We can again see that the results are very close, so this new equation of state seems to work as expected.
+
+### Mistake in integration
+We found a mistake in the integration loop:
+```
+velocities[i] = velocities[i-1] + dt*(pressure_forces(positions[i], masses, L, h, c_s, rho0)+central_object_forces(positions[i], L, central_object))/masses[:,None]
+```
+This was meant to be an Euler-forward loop, but it became a mix between the explicit forward euler and the implicit backward euler method. Somehow it was actually incredibly stable, because in the plots above you can see that the total energy is very well conserved, although not precisely. After fixing the mistake, and making it proper euler-forward:
+```
+velocities[i+1] = velocities[i] + dt*(get_pressure_forces(positions[i], masses, L, h, c_s, rho0)+central_object_forces(positions[i], L, central_object))/masses[:,None]
+```
+The results change, and energy is much less conserved, as can be seen below
+![euler_forward](figures/energy_euler_forward.png)
+Since the proper euler forward works very badly, and we cannot really justify the method with the mistake we were using earlier, we will switch to Leapfrog integration, which we were planning on anyways, since it is symplectic.
+
 
 
 ## Reminder final deadline
