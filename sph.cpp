@@ -9,7 +9,7 @@
 constexpr int neighbor_count = 9;
 constexpr int neighbor_offsets[neighbor_count][2] = {
 	{-1, -1}, {-1, 0}, {-1, 1},
-	{0, -1},  {0, 0},  {0, -1},
+	{0, -1},  {0, 0},  {0, 1},
 	{1, -1},  {1, 0},  {1, 1}
 };
 
@@ -46,6 +46,7 @@ struct SimulationParams {
 struct ParticleList {
 	// Particle information
 	int no_particles;
+	int current_step;
 	const SimulationParams& params;
 	
 	// Particle information vectors
@@ -103,6 +104,15 @@ struct ParticleList {
 			return params.sigma*0.25*(2.0-q)*(2.0-q)*(2.0-q);
 		else
 			return params.sigma*(1.0 -1.5*q2 +0.75*q3);
+	}
+
+	inline double deriv_kernel(double q) {
+		if (q>=2) return 0.0;
+
+		if (q>=1.0)
+			return -1*params.sigma*0.75*(2.0-q)*(2.0-q);
+		else
+			return params.sigma*(-3.0*q + 2.25*q*q);
 	}
 	
 	inline double cole_pressure(double rho) {
@@ -189,36 +199,49 @@ struct ParticleList {
 	void compart() {
 	// Does all of the above steps, call this after every step to (re)compartmentalize the data.
 		assign_cell();
-		
 		get_sorter();
-		
 		get_cell_start();
 		
-		pos_x = reorder(pos_x, indices);
-		pos_y = reorder(pos_y, indices);
-		mass = reorder(mass, indices);
-		rho = reorder(rho, indices);
-		pressure = reorder(pressure, indices);
-		cell_idx = reorder(cell_idx, indices);
+		auto new_pos_x = reorder(pos_x, indices);
+		auto new_pos_y = reorder(pos_y, indices);
+		auto new_vel_x = reorder(vel_x, indices);
+		auto new_vel_y = reorder(vel_y, indices);
+		auto new_acc_x = reorder(acc_x, indices);
+		auto new_acc_y = reorder(acc_y, indices);
+		auto new_mass = reorder(mass, indices);
+		auto new_rho = reorder(rho, indices);
+		auto new_pressure = reorder(pressure, indices);
+		auto new_cell_idx = reorder(cell_idx, indices);
+
+		pos_x = std::move(new_pos_x);
+		pos_y = std::move(new_pos_y);
+		vel_x = std::move(new_vel_x);
+		vel_y = std::move(new_vel_y);
+		acc_x = std::move(new_acc_x);
+		acc_y = std::move(new_acc_y);
+		mass = std::move(new_mass);
+		rho = std::move(new_rho);
+		pressure = std::move(new_pressure);
+		cell_idx = std::move(new_cell_idx);
 	}
 	
-	void compute_rho_p_a() {
+	void compute_rho_p() {
 		std::fill(rho.begin(), rho.end(), 0);
 		double h = params.h;
 		double rc = params.rc;
 		double h2 = h*h;
 		double rc2 = rc*rc;
-		
+
 		for (int cell=0; cell<params.no_cells; cell++) {
 			int start_i = cell_start[cell];
 			int end_i = cell_start[cell+1];
 			
 			for (int i = start_i; i<end_i; ++i) {
-			double xi = pos_x[i];
-			double yi = pos_y[i];
-			double rhoi = 0.0;
-			
-			auto [cx, cy] = scalar_index_to_vec(cell);
+				double xi = pos_x[i];
+				double yi = pos_y[i];
+				double rhoi = 0.0;
+				
+				auto [cx, cy] = scalar_index_to_vec(cell);
 			
 				for (auto [dx,dy] : neighbor_offsets) {
 					int ncx = cx + dx;
@@ -246,51 +269,103 @@ struct ParticleList {
 			}
 		}
 	}
-	void compute_density_pressure() {
-		
-		std::fill(rho.end(), rho.end(), 0.0);
-		
+
+	void compute_a() {
+		std::fill(acc_x.begin(), acc_x.end(), 0);
+		std::fill(acc_y.begin(), acc_y.end(), 0);
 		double h = params.h;
 		double rc = params.rc;
 		double h2 = h*h;
+		double rc2 = rc*rc;
 		
-		for (int i=0; i<no_particles; ++i) {
+		for (int cell=0; cell<params.no_cells; cell++) {
+			int start_i = cell_start[cell];
+			int end_i = cell_start[cell+1];
+			
+			for (int i = start_i; i<end_i; ++i) {
 			double xi = pos_x[i];
 			double yi = pos_y[i];
-			double rhoi = 0.0;
+			double acc_xi = 0.0;
+			double acc_yi = 0.0;
 			
-			auto cell = get_cell_index(xi, yi);
-			int cx = cell[0];
-			int cy = cell[1];
+			auto [cx, cy] = scalar_index_to_vec(cell);
 			
-			for (int dx = -1; dx <= 1; ++dx) {
-				for (int dy = -1; dy <= 1; ++dy) {
+				for (auto [dx,dy] : neighbor_offsets) {
 					int ncx = cx + dx;
 					int ncy = cy + dy;
 					
-					if (ncx<0||ncx>=params.nc[0]||ncy<0||ncy>=params.nc[1])
-						continue;
-						
-					int neighbor_cell = vec_to_scalar_index(ncx, ncy);
-					int start = cell_start[neighbor_cell];
-					int end = cell_start[neighbor_cell+1];
+					if (ncx<0 || ncx>=params.nc[0] || ncy<0 || ncy>=params.nc[1]) continue;
 					
-					for (int j = start; j<end; ++j) {
-						double rel_x = xi - pos_x[j];
-						double rel_y = yi - pos_y[j];
+					int neighbor = vec_to_scalar_index(ncx, ncy);
+					int start_j = cell_start[neighbor];
+					int end_j = cell_start[neighbor+1];
+					
+					for (int j = start_j; j<end_j; ++j) {
+						if (i == j) continue;
+
+						double rel_x = xi-pos_x[j];
+						double rel_y = yi-pos_y[j];
 						double r2 = rel_x*rel_x + rel_y*rel_y;
 						
-						if (r2 < rc*rc) {
-							double q = std::sqrt(r2/h2);
-							
-							double w = kernel(q);
-							rhoi += mass[j]*w;
+						if (r2 < rc2 && r2 > 1e-12) {
+							double r = std::sqrt(r2);
+							double q = std::sqrt(r2 / h2);
+
+							double common = -1*mass[j]*
+							(pressure[i]/(rho[i]*rho[i]) + 
+								pressure[j]/(rho[j]*rho[j]))
+							*deriv_kernel(q)/(h*r);
+
+							acc_xi += common * rel_x;
+							acc_yi += common * rel_y;
 						}
 					}
 				}
+				acc_x[i] = acc_xi;
+				acc_y[i] = acc_yi;
 			}
-			rho[i] = rhoi;
-			pressure[i] = cole_pressure(rhoi);
+		}
+	}
+
+	void compute_v_half() {
+		for (int i=0; i<no_particles; ++i) {
+			vel_x[i] += 0.5 * params.dt * acc_x[i];
+			vel_y[i] += 0.5 * params.dt * acc_y[i];
+		}
+	}
+
+	void compute_pos() {
+		for (int i=0; i<no_particles; ++i) {
+			pos_x[i] += params.dt * vel_x[i];
+			pos_y[i] += params.dt * vel_y[i];
+		}
+	}
+
+	void compute_v_full() {
+		for (int i=0; i<no_particles; ++i) {
+			vel_x[i] += 0.5 * params.dt * acc_x[i];
+			vel_y[i] += 0.5 * params.dt * acc_y[i];
+		}
+	}
+
+	void print_pos() {
+		for (int i=0; i<no_particles; ++i) {
+			std::cout << current_step << "," << pos_x[i] << "," << pos_y[i] << std::endl;
+		}
+	}
+
+	void integrate() {
+		std::cout << "time,x,y" << std::endl;
+
+		for (int step=0; step<params.no_steps; step++) {
+			compart();
+			compute_rho_p();
+			compute_a();
+			compute_v_half();
+			compute_pos();
+			compute_v_full();
+			print_pos();
+			current_step += 1;
 		}
 	}
 };
@@ -322,14 +397,8 @@ int main(int argc, char *argv[]) {
 	pl.init_mass();
 	pl.init_vel();
 
-	pl.assign_cell();
-	pl.get_sorter();
-	pl.get_cell_start();
-	pl.compart();
-	pl.compute_rho_p_a();
-
-	std::cout << "rho[1] = " << pl.rho[1] << std::endl;
-	std::cout << "pressure[1] = " << pl.pressure[1] << std::endl;
+	pl.integrate();
+	std::cout << pl.no_particles << std::endl;
 		
 	return 0;
 }

@@ -1,7 +1,7 @@
 #! /bin/bash
 
-res=0.1
-no_steps=10
+res=0.15
+no_steps=1000
 Lx=5
 Ly=5
 rho0=1000
