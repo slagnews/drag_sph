@@ -237,7 +237,7 @@ def get_velocity_grid(positions, velocities, masses, L, h, grid_size=100):
     return X, Y, Vx, Vy, V
 
 
-def animate_particles(positions, velocities, masses, L, h, fps=30, central_object=None, field="velocity", file_name="animation.mp4", is_ghost=None):
+def animate_particles(positions, velocities, masses, L, h, fps=30, central_object=None, field="velocity", file_name="animation.mp4"):
     """Animates the positions of particles in a 2D space.
     Arguments:
         positions (np.ndarray): positions of all particles
@@ -247,7 +247,71 @@ def animate_particles(positions, velocities, masses, L, h, fps=30, central_objec
         object (dict): optional central object
         file_name (float): file to which to save the animation
     """
+
+    no_frames = len(positions)
+
+    # Setup figure
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, L)
+    ax.set_ylim(0, L)
+    ax.set_xlabel("$x$")
+    ax.set_ylabel("$y$")
+    ax.set_aspect("equal")
+
+    # Plot particle poisitions
+    fluid_particles, = ax.plot(positions[0,:,0], positions[0,:,1], linestyle="None", marker="o", markersize=1, color="red")
     
+    # Plot field
+    if field == "density":
+        x,y,rho = get_density_grid(positions[0], masses, L, h)
+        mesh = ax.pcolor(x,y,rho, cmap="viridis")
+    elif field == "velocity":
+        x,y,vx,vy,v = get_velocity_grid(positions[0], velocities[0], masses, L, h)
+        mesh = ax.pcolor(x,y,v, cmap="viridis")
+
+    # Plot central object
+    if central_object:
+        theta = np.linspace(0,2*np.pi,100)
+        ax.plot(L/2+central_object["radius"]*np.cos(theta),L/2+central_object["radius"]*np.sin(theta), color="white")
+    
+    start = datetime.now()
+
+    def update(frame):
+        """Update the scatter plot for each frame."""
+        
+        # Update particle positions
+        fluid_particles.set_xdata(positions[frame,:,0])
+        fluid_particles.set_ydata(positions[frame,:,1])
+        
+        # Update field
+        if field == "density":
+            x,y,rho = get_density_grid(positions[frame], masses, L, h)
+            mesh.set_array(rho.ravel())
+        elif field == "velocity":
+            x,y,rho = get_density_grid(positions[frame], masses, L, h)
+            mesh.set_array(rho.ravel())
+        ttg = (datetime.now() - start)/(frame+1) * (no_frames - frame)
+        print(f"Frame {frame+1} of {no_frames} done, time to go: {ttg}", end="\r")
+
+        return fluid_particles, mesh
+
+    ani = FuncAnimation(fig, update, frames=no_frames, interval=50)
+    plt.show()
+    ani.save(file_name, fps=fps, extra_args=['-vcodec', 'libx264'], dpi=300)
+    print(f"Animation saved to {file_name}!")
+
+def animate_particles_with_ghosts(positions, velocities, masses, L, h, fps=30, central_object=None, field="velocity", file_name="animation.mp4", is_ghost=None):
+    """Animates the positions of particles in a 2D space.
+    Arguments:
+        positions (np.ndarray): positions of all particles
+        masses (np.ndarray): masses of all particles
+        L (float): size of the simulation
+        h (float): smoothing length
+        object (dict): optional central object
+        file_name (float): file to which to save the animation
+    """
+    if not isinstance(is_ghost, np.ndarray):
+        is_ghost = np.array([0]*len(masses), dtype=bool)
 
     no_frames = len(positions)
 
@@ -285,7 +349,7 @@ def animate_particles(positions, velocities, masses, L, h, fps=30, central_objec
         # Update particle positions
         fluid_particles.set_xdata(positions[frame,~is_ghost,0])
         fluid_particles.set_ydata(positions[frame,~is_ghost,1])
-        if not isinstance(is_ghost, np.ndarray):
+        if ghost_particles:
             ghost_particles.set_xdata(positions[frame,is_ghost,0])
             ghost_particles.set_ydata(positions[frame,is_ghost,1])
         
@@ -298,7 +362,10 @@ def animate_particles(positions, velocities, masses, L, h, fps=30, central_objec
             mesh.set_array(rho.ravel())
         ttg = (datetime.now() - start)/(frame+1) * (no_frames - frame)
         print(f"Frame {frame+1} of {no_frames} done, time to go: {ttg}", end="\r")
-        return fluid_particles,ghost_particles,mesh
+
+        if ghost_particles:
+            return fluid_particles,ghost_particles,mesh
+        return fluid_particles, mesh
 
     ani = FuncAnimation(fig, update, frames=no_frames, interval=50)
     plt.show()

@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <random>
 #include <numeric>
+#include <iomanip>
+#include <fstream>
 
 constexpr int neighbor_count = 9;
 constexpr int neighbor_offsets[neighbor_count][2] = {
@@ -349,10 +351,19 @@ struct ParticleList {
 	}
 
 	void print_pos() {
+		std::cout << std::fixed << std::setprecision(10);  // ← Add this
 		for (int i=0; i<no_particles; ++i) {
 			std::cout << current_step << "," << pos_x[i] << "," << pos_y[i] << std::endl;
 		}
 	}
+
+	void write_frame(std::ofstream& out, const std::vector<double>& x, const std::vector<double>& y) {
+		int N = x.size();
+		out.write(reinterpret_cast<const char*>(&N), sizeof(int));
+		out.write(reinterpret_cast<const char*>(x.data()), sizeof(double) * N);
+		out.write(reinterpret_cast<const char*>(y.data()), sizeof(double) * N);
+	}
+
 
 	void periodic() {
 		for (int i = 0; i < no_particles; ++i) {
@@ -366,6 +377,7 @@ struct ParticleList {
 
 	void integrate() {
 		std::cout << "time,x,y" << std::endl;
+		std::ofstream out("all_output.bin", std::ios::binary);
 
 		for (int step=0; step<params.no_steps; step++) {
 			compart();
@@ -375,9 +387,11 @@ struct ParticleList {
 			compute_pos();
 			periodic();
 			compute_v_full();
-			//print_pos();
+			write_frame(out, pos_x, pos_y);
 			current_step += 1;
 		}
+
+		out.close();
 	}
 };
 
