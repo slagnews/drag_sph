@@ -17,11 +17,11 @@ constexpr int neighbor_offsets[neighbor_count][2] = {
 
 
 struct SimulationParams {
-	double res, Lx, Ly, kappa, h, rc, v0, dt, c_s, gamma_index, rho0, sigma, B;
+	double res, Lx, Ly, kappa, h, rc, v0, dt, c_s, P0, rho0, sigma, beta;
 	int no_cells, no_steps, Nx, Ny, init_particles;
 	std::array<int, 2> nc;
 	double central_radius, boundary_width, max_force;
-	SimulationParams(double res, int no_steps, double Lx, double Ly, double rho0, double kappa, double v0, double dt, double c_s, double gamma_index, double central_radius, double boundary_width, double max_force)
+	SimulationParams(double res, int no_steps, double Lx, double Ly, double rho0, double kappa, double v0, double dt, double c_s, double beta, double central_radius, double boundary_width, double max_force)
 		: res(res),
 		  no_steps(no_steps),
 		  Lx(Lx),
@@ -31,7 +31,7 @@ struct SimulationParams {
 		  v0(v0),
 		  dt(dt),
 		  c_s(c_s),
-		  gamma_index(gamma_index),
+		  beta(beta),
 		  central_radius(central_radius),
 		  boundary_width(boundary_width),
 		  max_force(max_force)
@@ -44,7 +44,7 @@ struct SimulationParams {
 		Ny = int(Ly/res);
 		init_particles = Nx*Ny;
 		sigma = 7.0/(478.0*M_PI*h*h);//10.0/(7.0*M_PI*h*h);
-		B = c_s*c_s*rho0/gamma_index;
+		P0 = beta*c_s*c_s*rho0;
 	}
 };
 
@@ -113,8 +113,8 @@ struct ParticleList {
 		else if (q >= 1.0) return -5*params.sigma*(pow(3.0-q,4) - 6*pow(2.0-q,4) + 15*pow(1.0-q,4));
 	}
 	
-	inline double cole_pressure(double rho) {
-		return params.B*(pow(rho/params.rho0, params.gamma_index)-1);
+	inline double calculate_pressure(double rho) {
+		return params.P0 + params.c_s*params.c_s*(rho-params.rho0);//params.B*(pow(rho/params.rho0, params.gamma_index)-1);
 	}
 	
 	void init_random() {
@@ -263,7 +263,7 @@ struct ParticleList {
 					}
 				}
 				rho[i] = rhoi;
-				pressure[i] = cole_pressure(rhoi);
+				pressure[i] = calculate_pressure(rhoi);
 			}
 		}
 	}

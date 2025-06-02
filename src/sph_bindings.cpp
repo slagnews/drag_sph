@@ -20,7 +20,6 @@ PYBIND11_MODULE(sph_cpp, m) {
         .def_readonly("h", &SimulationParams::h)
         .def_readonly("rc", &SimulationParams::rc)
         .def_readonly("nc", &SimulationParams::nc)
-        .def_readonly("B", &SimulationParams::B)
         .def_readonly("sigma", &SimulationParams::sigma)
         .def_readonly("res", &SimulationParams::res)
         .def_readonly("rho0", &SimulationParams::rho0)
