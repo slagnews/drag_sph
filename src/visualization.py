@@ -48,6 +48,28 @@ def kernel(q, sigma):
     w[q<=1] = sigma*(1-1.5*q[q<=1]**2+0.75*q[q<=1]**3)
     return w
 
+def relative_positions(positions, Lx, Ly):
+    """Calculates relative positions and distances between particles.
+    Arguments:
+        positions (np.ndarray): positions of all particles
+        L (float): size of the simulation
+    Returns:
+        rel_positions (np.ndarray): relative positions of particles
+        rel_distances (np.ndarray): distance between particles
+    """
+    
+    # Calculate NxNxD array for N atoms in D dimensions storing relative positions:
+    rel_positions = positions[np.newaxis,:,:] - positions[:,np.newaxis,:]
+
+    # Normalize relative positions according to periodic boundary conditions:
+    rel_positions[:,:,0] = (rel_positions[:,:,0] + Lx/2)%Lx - Lx/2
+    rel_positions[:,:,1] = (rel_positions[:,:,1] + Ly/2)%Ly - Ly/2
+
+    # Calculate distances from normalized distances:
+    rel_distances = np.sqrt(np.sum(rel_positions**2, axis=2))
+
+    return rel_positions, rel_distances
+
 def get_density_grid(pos_x, pos_y, Lx, Ly, masses, sigma, grid_size=100):
     """Calculates the densities on a grid
     Arguments:
@@ -79,7 +101,17 @@ def get_density_grid(pos_x, pos_y, Lx, Ly, masses, sigma, grid_size=100):
     density = np.sum(masses[0]*kernel(distances, sigma), axis=2)
     return x,y,density
 
-
+def get_densities(relative_distances, masses, h):
+    """Calculates the densities at the positions of all particles.
+    Arguments:
+        positions (np.ndarray): positions of all particles
+        masses (np.ndarray):  masses of all particles
+        L (float): size of the simulation
+        h (float) smoothing length
+    Returns:
+        (np.ndarray): densities at particle positions
+    """
+    return np.sum(masses*kernel(relative_distances, h), axis=1)
 
 def get_velocity_grid(positions, velocities, masses, params, grid_size=100):
     """Interpolated the velocities of particles on a grid
@@ -88,21 +120,21 @@ def get_velocity_grid(positions, velocities, masses, params, grid_size=100):
         velocities (np.ndarray): velocities of all particles
 
     """
-    _, distances = relative_positions(positions, L)
-    densities = get_densities(distances, masses, h)
+    _, distances = relative_positions(positions, params.Lx, params.Ly)
+    densities = get_densities(distances, masses, params.h)
 
-    x = np.linspace(0, L, grid_size)
-    y = np.linspace(0, L, grid_size)
+    x = np.linspace(0, params.Lx, grid_size)
+    y = np.linspace(0, params.Ly, grid_size)
     X, Y = np.meshgrid(x, y)
 
     # Differences between grid and particle positions
     dx = (X[:, :, None] - positions[:, 0])
-    dx = (dx + L / 2) % L - L / 2
+    dx = (dx + params.Lx / 2) % params.Lx - params.Lx / 2
     dy = (Y[:, :, None] - positions[:, 1])
-    dy = (dy + L / 2) % L - L / 2
+    dy = (dy + params.Ly / 2) % params.Ly - params.Ly / 2
 
     distances = np.sqrt(dx**2 + dy**2)
-    W = kernel(distances, h)  # shape: (grid_size, grid_size, N)
+    W = kernel(distances, params.h)  # shape: (grid_size, grid_size, N)
 
     # Broadcast and weight velocities: (N,2) → (grid, grid, N, 2)
     velocity_contribs = (masses / densities)[:, None] * velocities  # shape (N, 2)
@@ -112,31 +144,44 @@ def get_velocity_grid(positions, velocities, masses, params, grid_size=100):
 
     return X, Y, Vx, Vy, V
 
-def animate(positions, params, masses, filename="figures/anim.mp4", interval=100):
+def animate(positions, velocities, params, masses, field_type="density", filename="figures/anim.mp4", interval=100):
     fig, ax = plt.subplots()
-    ax.set_xlim(0,float(params.Lx))
-    ax.set_ylim(0,float(params.Ly))
+    ax.set_xlim(0, float(params.Lx))
+    ax.set_ylim(0, float(params.Ly))
     ax.set_aspect("equal")
 
     # Plot particles
     particles, = ax.plot(positions[0,:,0], positions[0,:,1], linestyle="None", marker=".", color="red")
 
     # Plot central object
-    phi = np.linspace(0,2*np.pi,100)
-    ax.plot(params.Lx/2.0+params.central_radius*np.cos(phi), params.Ly/2.0+params.central_radius*np.sin(phi), color="white")
+    phi = np.linspace(0, 2*np.pi, 100)
+    ax.plot(params.Lx/2.0 + params.central_radius*np.cos(phi),
+            params.Ly/2.0 + params.central_radius*np.sin(phi),
+            color="white")
 
-    # Plot density
-    x,y,rho = get_density_grid(positions[0,:,0], positions[0,:,1], params.Lx, params.Ly, masses, params.sigma)
-    density = ax.pcolor(x,y,rho)
+    # Plot field (using imshow for simplicity and speed)
+    if field_type == "density":
+        _, _, field_data = get_density_grid(positions[0,:,0], positions[0,:,1], params.Lx, params.Ly, masses, params.sigma)
+    elif field_type == "velocity":
+        _, _, _, _, field_data = get_velocity_grid(positions[0], velocities[0], masses, params)
+    else:
+        raise ValueError("Unknown field_type")
+
+    field_img = ax.imshow(field_data, extent=[0, params.Lx, 0, params.Ly], origin="lower", cmap="viridis")
+    fig.colorbar(field_img, ax=ax)
 
     def update(frame):
         particles.set_xdata(positions[frame,:,0])
         particles.set_ydata(positions[frame,:,1])
-        x,y,rho = get_density_grid(positions[frame,:,0], positions[frame,:,1], params.Lx, params.Ly, masses, params.sigma)
-        density.set_array(rho)
+        if field_type == "density":
+            _, _, field_data = get_density_grid(positions[frame,:,0], positions[frame,:,1], params.Lx, params.Ly, masses, params.sigma)
+        elif field_type == "velocity":
+            _, _, _, _, field_data = get_velocity_grid(positions[frame], velocities[frame], masses, params)
+        field_img.set_data(field_data)
         print(f"frame {frame+1} of {len(positions)} done!", end='\r')
+        return particles, field_img
 
-    anim = FuncAnimation(fig, update, len(positions), interval=interval)
+    anim = FuncAnimation(fig, update, frames=len(positions), interval=interval)
     anim.save(filename)
     plt.show()
 
