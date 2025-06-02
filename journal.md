@@ -255,6 +255,11 @@ In the paper we are trying to recreate, they show the drag coefficient as a func
 ![cd_vs_t](figures/cd_vs_t.png)
 We also see a decrease in the drag coefficient, but not as sharply and it does not quite seem to converge. For us it might also decrease because the entire flow slows down (periodic boundary conditions). Also we do not yet have viscosity which is an important effect for drag.
 
+### C++ implementation
+The SPH simulation, including the optimized algorithm for faster calculation, was implemented in C++, so we are switching from our python code to the C++ code.
+
+To check results, we ran two similiar simulations of fluid flow around a central object. The animations from the python and C++ simulations can be found in figures/py_animation.mp4 and figures/cpp_animation.mp4 respectively. We can see that the fluid behaves very similar. Some differences are still there, mainly because the C++ implementation uses another kernel and equation of state. Also the input parameters are initialized differently in C++, so all parameters are only approximately the same.
+
 ## Reminder final deadline
 
 The deadline for project 3 is **9 June 23:59**. By then, you must have uploaded the presentation slides to the repository, and the repository must contain the latest version of the code.
