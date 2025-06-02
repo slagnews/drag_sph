@@ -1,6 +1,6 @@
 #! /bin/bash
 
-res=0.15
+res=0.05
 no_steps=1000
 Lx=5
 Ly=5

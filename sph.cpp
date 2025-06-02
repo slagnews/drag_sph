@@ -354,6 +354,16 @@ struct ParticleList {
 		}
 	}
 
+	void periodic() {
+		for (int i = 0; i < no_particles; ++i) {
+			pos_x[i] = std::fmod(pos_x[i], params.Lx);
+			if (pos_x[i] < 0) pos_x[i] += params.Lx;
+
+			pos_y[i] = std::fmod(pos_y[i], params.Ly);
+			if (pos_y[i] < 0) pos_y[i] += params.Ly;
+		}
+	}
+
 	void integrate() {
 		std::cout << "time,x,y" << std::endl;
 
@@ -363,8 +373,9 @@ struct ParticleList {
 			compute_a();
 			compute_v_half();
 			compute_pos();
+			periodic();
 			compute_v_full();
-			print_pos();
+			//print_pos();
 			current_step += 1;
 		}
 	}
