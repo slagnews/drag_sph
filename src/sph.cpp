@@ -99,7 +99,7 @@ struct ParticleList {
 		return {cx, cy};
 	}
 	
-	inline double kernel(double q) {
+	inline double kernel(double q) const {
 		if (q >= 2) return 0.0;
 		
 		double q2 = q*q;
@@ -126,7 +126,7 @@ struct ParticleList {
 	
 	void init_random() {
 	// Randomize the x and y positions over the whole domain
-		for (size_t i=0; i<no_particles; ++i) {
+		for (int i=0; i<no_particles; ++i) {
 			pos_x[i] = init_x_dist(engine);
 			pos_y[i] = init_y_dist(engine);
 		}
@@ -134,8 +134,8 @@ struct ParticleList {
 	
 	void init_grid() {
 		int index = 0;
-		for (size_t i=0; i<params.Nx; ++i) {
-			for (size_t j=0; j<params.Ny; ++j) {
+		for (int i=0; i<params.Nx; ++i) {
+			for (int j=0; j<params.Ny; ++j) {
 				pos_x[index] = i*params.res;
 				pos_y[index] = j*params.res;
 				++index;
@@ -194,7 +194,7 @@ struct ParticleList {
 	template<typename T>
 	std::vector<T> reorder(const std::vector<T>& input, const std::vector<int>& indices) {
 		std::vector<T> output(indices.size());
-		for (size_t i = 0; i < indices.size(); ++i) {
+		for (int i = 0; i < indices.size(); ++i) {
 			output[i] = input[indices[i]];
 		}
 		return output;
@@ -388,11 +388,13 @@ struct ParticleList {
 		}
 	}
 
-	void write_frame(std::ofstream& out, const std::vector<double>& x, const std::vector<double>& y) {
-		int N = x.size();
+	void write_frame(std::ofstream& out) {
+		int N = pos_x.size();
 		out.write(reinterpret_cast<const char*>(&N), sizeof(int));
-		out.write(reinterpret_cast<const char*>(x.data()), sizeof(double) * N);
-		out.write(reinterpret_cast<const char*>(y.data()), sizeof(double) * N);
+		out.write(reinterpret_cast<const char*>(pos_x.data()), sizeof(double) * N);
+		out.write(reinterpret_cast<const char*>(pos_y.data()), sizeof(double) * N);
+		out.write(reinterpret_cast<const char*>(vel_x.data()), sizeof(double) * N);
+		out.write(reinterpret_cast<const char*>(vel_y.data()), sizeof(double) * N);
 	}
 
 
@@ -407,7 +409,6 @@ struct ParticleList {
 	}
 
 	void integrate() {
-		std::cout << "time,x,y" << std::endl;
 		std::ofstream out("all_output.bin", std::ios::binary);
 
 		for (int step=0; step<params.no_steps; step++) {
@@ -419,7 +420,7 @@ struct ParticleList {
 			compute_pos();
 			periodic();
 			compute_v_full();
-			write_frame(out, pos_x, pos_y);
+			write_frame(out);
 			current_step += 1;
 		}
 
@@ -446,9 +447,9 @@ int main(int argc, char *argv[]) {
 		atof(argv[8]), // dt
 		atof(argv[9]), // c_s
 		atof(argv[10]), // gamma_index
-		atof(argv[11]),
-		atof(argv[12]),
-		atof(argv[13])
+		atof(argv[11]), // central_radius
+		atof(argv[12]), // boundary_width
+		atof(argv[13])  // max_force
 	);
 	
 	ParticleList pl(params);

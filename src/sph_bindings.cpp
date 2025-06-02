@@ -16,7 +16,18 @@ PYBIND11_MODULE(sph_cpp, m) {
         .def_readonly("init_particles", &SimulationParams::init_particles)
         .def_readonly("Ny", &SimulationParams::central_radius)
         .def_readonly("Ny", &SimulationParams::boundary_width)
-        .def_readonly("Ny", &SimulationParams::max_force);
+        .def_readonly("Ny", &SimulationParams::max_force)
+        .def_readonly("h", &SimulationParams::h)
+        .def_readonly("rc", &SimulationParams::rc)
+        .def_readonly("nc", &SimulationParams::nc)
+        .def_readonly("B", &SimulationParams::B)
+        .def_readonly("sigma", &SimulationParams::sigma)
+        .def_readonly("res", &SimulationParams::res)
+        .def_readonly("rho0", &SimulationParams::rho0)
+        .def_readonly("central_radius", &SimulationParams::central_radius)
+        .def_readonly("boundary_width", &SimulationParams::boundary_width)
+        .def_readonly("max_force", &SimulationParams::max_force)
+        ;
 
     py::class_<ParticleList>(m, "ParticleList")
         .def(py::init<const SimulationParams&>())
@@ -24,7 +35,8 @@ PYBIND11_MODULE(sph_cpp, m) {
         .def("init_random", &ParticleList::init_random)
         .def("init_mass", &ParticleList::init_mass)
         .def("init_vel", &ParticleList::init_vel)
-        .def("integrate", &ParticleList::integrate);
+        .def("integrate", &ParticleList::integrate)
+        .def("kernel", [](const ParticleList &pl, double q) { return pl.kernel(q); });
         //.def("set_initial_positions", &ParticleList::set_initial_positions)
         //.def("set_initial_velocities", &ParticleList::set_initial_velocities);
         /**
