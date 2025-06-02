@@ -201,20 +201,43 @@ def integrate(initial_positions, initial_velocities, masses, L, h, c_s, rho0, dt
         velocities[i+1] = velocities[i] + 1/2*(forces[i] + forces[i+1])*dt
         velocities[i+1,is_ghost] = velocities[i,is_ghost]
         
-
-        
-        #if central_object:
-        #    #forces = get_pressure_forces(positions[i], masses, L, h, c_s, rho0)+central_object_forces(positions[i], L, central_object)
-        #    velocities[i+1] = velocities[i] + dt*(get_pressure_forces(positions[i], masses, L, h, c_s, rho0)+central_object_forces(positions[i], L, central_object))/masses[:,None]
-        #else:
-        #    #forces = get_pressure_forces(positions[i], masses, L, h, c_s, rho0)
-        #    velocities[i+1] = velocities[i] + dt*get_pressure_forces(positions[i], masses, L, h, c_s, rho0)/masses
         ttg = (datetime.now()-start)/(i+1) * (no_steps-i-1)
         print(f"{(i+1)/no_steps*100:.0f}% done, time to go: {ttg}", end="\r")
     return positions, velocities
 
+def get_velocity_grid(positions, velocities, masses, L, h, grid_size=100):
+    """Interpolated the velocities of particles on a grid
+    Arguments:
+        positions (np.ndarray): the positions of all particles
+        velocities (np.ndarray): velocities of all particles
 
-def animate_particles(positions, masses, L, h, fps=30, central_object=None, file_name="animation.mp4", is_ghost=None):
+    """
+    _, distances = relative_positions(positions, L)
+    densities = get_densities(distances, masses, h)
+
+    x = np.linspace(0, L, grid_size)
+    y = np.linspace(0, L, grid_size)
+    X, Y = np.meshgrid(x, y)
+
+    # Differences between grid and particle positions
+    dx = (X[:, :, None] - positions[:, 0])
+    dx = (dx + L / 2) % L - L / 2
+    dy = (Y[:, :, None] - positions[:, 1])
+    dy = (dy + L / 2) % L - L / 2
+
+    distances = np.sqrt(dx**2 + dy**2)
+    W = kernel(distances, h)  # shape: (grid_size, grid_size, N)
+
+    # Broadcast and weight velocities: (N,2) → (grid, grid, N, 2)
+    velocity_contribs = (masses / densities)[:, None] * velocities  # shape (N, 2)
+    Vx = np.sum(W * velocity_contribs[:, 0], axis=2)
+    Vy = np.sum(W * velocity_contribs[:, 1], axis=2)
+    V = np.sqrt(Vx**2+Vy**2)
+
+    return X, Y, Vx, Vy, V
+
+
+def animate_particles(positions, velocities, masses, L, h, fps=30, central_object=None, field="velocity", file_name="animation.mp4", is_ghost=None):
     """Animates the positions of particles in a 2D space.
     Arguments:
         positions (np.ndarray): positions of all particles
@@ -228,30 +251,51 @@ def animate_particles(positions, masses, L, h, fps=30, central_object=None, file
 
     no_frames = len(positions)
 
+    # Setup figure
     fig, ax = plt.subplots()
     ax.set_xlim(0, L)
     ax.set_ylim(0, L)
     ax.set_xlabel("$x$")
     ax.set_ylabel("$y$")
     ax.set_aspect("equal")
+
+    # Plot particle poisitions
     fluid_particles, = ax.plot(positions[0,~is_ghost,0], positions[0,~is_ghost,1], linestyle="None", marker="o", markersize=1, color="red")
-    ghost_particles, = ax.plot(positions[0,is_ghost,0], positions[0,is_ghost,1], linestyle="None", marker="o", markersize=1, color="white")
-    x,y,rho = get_density_grid(positions[0], masses, L, h, is_ghost=is_ghost)
-    mesh = ax.pcolor(x,y,rho, cmap="viridis")
+    if not isinstance(is_ghost, np.ndarray):
+        ghost_particles, = ax.plot(positions[0,is_ghost,0], positions[0,is_ghost,1], linestyle="None", marker="o", markersize=1, color="white")
+    
+    # Plot field
+    if field == "density":
+        x,y,rho = get_density_grid(positions[0], masses, L, h, is_ghost=is_ghost)
+        mesh = ax.pcolor(x,y,rho, cmap="viridis")
+    elif field == "velocity":
+        x,y,vx,vy,v = get_velocity_grid(positions[0], velocities[0], masses, L, h)
+        mesh = ax.pcolor(x,y,v, cmap="viridis")
+
+    # Plot central object
     if central_object:
         theta = np.linspace(0,2*np.pi,100)
         ax.plot(L/2+central_object["radius"]*np.cos(theta),L/2+central_object["radius"]*np.sin(theta), color="white")
+    
     start = datetime.now()
+
     def update(frame):
         """Update the scatter plot for each frame."""
         
+        # Update particle positions
         fluid_particles.set_xdata(positions[frame,~is_ghost,0])
         fluid_particles.set_ydata(positions[frame,~is_ghost,1])
-        ghost_particles.set_xdata(positions[frame,is_ghost,0])
-        ghost_particles.set_ydata(positions[frame,is_ghost,1])
-        x,y,rho = get_density_grid(positions[frame], masses, L, h, is_ghost=is_ghost)
-        mesh.set_array(rho.ravel())
-
+        if not isinstance(is_ghost, np.ndarray):
+            ghost_particles.set_xdata(positions[frame,is_ghost,0])
+            ghost_particles.set_ydata(positions[frame,is_ghost,1])
+        
+        # Update field
+        if field == "density":
+            x,y,rho = get_density_grid(positions[frame], masses, L, h, is_ghost=is_ghost)
+            mesh.set_array(rho.ravel())
+        elif field == "velocity":
+            x,y,rho = get_density_grid(positions[frame], masses, L, h, is_ghost=is_ghost)
+            mesh.set_array(rho.ravel())
         ttg = (datetime.now() - start)/(frame+1) * (no_frames - frame)
         print(f"Frame {frame+1} of {no_frames} done, time to go: {ttg}", end="\r")
         return fluid_particles,ghost_particles,mesh
