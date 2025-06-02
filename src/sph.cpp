@@ -20,8 +20,8 @@ struct SimulationParams {
 	double res, Lx, Ly, kappa, h, rc, v0, dt, c_s, gamma_index, rho0, sigma, B;
 	int no_cells, no_steps, Nx, Ny, init_particles;
 	std::array<int, 2> nc;
-	
-	SimulationParams(double res, int no_steps, double Lx, double Ly, double rho0, double kappa, double v0, double dt, double c_s, double gamma_index)
+	double central_radius, boundary_width, max_force;
+	SimulationParams(double res, int no_steps, double Lx, double Ly, double rho0, double kappa, double v0, double dt, double c_s, double gamma_index, double central_radius, double boundary_width, double max_force)
 		: res(res),
 		  no_steps(no_steps),
 		  Lx(Lx),
@@ -31,7 +31,10 @@ struct SimulationParams {
 		  v0(v0),
 		  dt(dt),
 		  c_s(c_s),
-		  gamma_index(gamma_index)
+		  gamma_index(gamma_index),
+		  central_radius(central_radius),
+		  boundary_width(boundary_width),
+		  max_force(max_force)
 	{
 		h = kappa*res;
 		rc = 2*h;
@@ -329,6 +332,34 @@ struct ParticleList {
 		}
 	}
 
+	void add_central_object_forces(){
+		double Lx = params.Lx;
+		double Ly = params.Ly;
+		double radius = params.central_radius;
+		double width = params.boundary_width;
+		double max_force = params.max_force;
+
+		for (int i = 0; i < no_particles; ++i){
+			double dx = pos_x[i] - Lx/2.0;
+			dx = std::fmod(dx + Lx/2.0, Lx) - Lx/2.0;
+
+			double dy = pos_y[i] - Ly/2.0;
+			dy = std::fmod(dy + Ly/2.0, Ly) - Ly/2.0;
+
+			double distance = std::sqrt(dx*dx + dy*dy);
+
+			if (distance > 1e-8){
+				double nx = dx/distance;
+				double ny = dy/distance;
+				
+				double strength = 1.0/(1.0+std::exp((distance - radius)/width));
+				
+				acc_x[i] += max_force * strength * nx;
+				acc_y[i] += max_force * strength * ny;
+			}
+		}
+	}
+
 	void compute_v_half() {
 		for (int i=0; i<no_particles; ++i) {
 			vel_x[i] += 0.5 * params.dt * acc_x[i];
@@ -383,6 +414,7 @@ struct ParticleList {
 			compart();
 			compute_rho_p();
 			compute_a();
+			add_central_object_forces();
 			compute_v_half();
 			compute_pos();
 			periodic();
@@ -413,7 +445,10 @@ int main(int argc, char *argv[]) {
 		atof(argv[7]), // v0
 		atof(argv[8]), // dt
 		atof(argv[9]), // c_s
-		atof(argv[10]) // gamma_index
+		atof(argv[10]), // gamma_index
+		atof(argv[11]),
+		atof(argv[12]),
+		atof(argv[13])
 	);
 	
 	ParticleList pl(params);

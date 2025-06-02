@@ -8,12 +8,15 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(sph_cpp, m) {
     py::class_<SimulationParams>(m, "SimulationParams")
-        .def(py::init<double, int, double, double, double, double, double, double, double, double>())
+        .def(py::init<double, int, double, double, double, double, double, double, double, double, double, double, double>())
         .def_readonly("Lx", &SimulationParams::Lx)
         .def_readonly("Ly", &SimulationParams::Ly)
         .def_readonly("Nx", &SimulationParams::Nx)
         .def_readonly("Ny", &SimulationParams::Ny)
-        .def_readonly("init_particles", &SimulationParams::init_particles);
+        .def_readonly("init_particles", &SimulationParams::init_particles)
+        .def_readonly("Ny", &SimulationParams::central_radius)
+        .def_readonly("Ny", &SimulationParams::boundary_width)
+        .def_readonly("Ny", &SimulationParams::max_force);
 
     py::class_<ParticleList>(m, "ParticleList")
         .def(py::init<const SimulationParams&>())
