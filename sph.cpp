@@ -6,8 +6,16 @@
 #include <random>
 #include <numeric>
 
+constexpr int neighbor_count = 9;
+constexpr int neighbor_offsets[neighbor_count][2] = {
+	{-1, -1}, {-1, 0}, {-1, 1},
+	{0, -1},  {0, 0},  {0, -1},
+	{1, -1},  {1, 0},  {1, 1}
+};
+
+
 struct SimulationParams {
-	double res, Lx, Ly, kappa, h, rc, v0, dt, c_s, gamma_index, rho0;
+	double res, Lx, Ly, kappa, h, rc, v0, dt, c_s, gamma_index, rho0, sigma, B;
 	int no_cells, no_steps, Nx, Ny, init_particles;
 	std::array<int, 2> nc;
 	
@@ -30,6 +38,8 @@ struct SimulationParams {
 		Nx = int(Lx/res);
 		Ny = int(Ly/res);
 		init_particles = Nx*Ny;
+		sigma = 10.0/(7.0*M_PI*h*h);
+		B = c_s*c_s*rho0/gamma_index;
 	}
 };
 
@@ -39,7 +49,7 @@ struct ParticleList {
 	const SimulationParams& params;
 	
 	// Particle information vectors
-	std::vector<double> pos_x, pos_y, vel_x, vel_y, mass, rho, pressure;
+	std::vector<double> pos_x, pos_y, vel_x, vel_y, acc_x, acc_y, mass, rho, pressure;
 	std::vector<int> cell_idx, indices, cell_counts, cell_start;
 	
 	// Randomizer generator and distribution
@@ -55,6 +65,8 @@ struct ParticleList {
 		  pos_y(p.init_particles),
 		  vel_x(p.init_particles),
 		  vel_y(p.init_particles),
+		  acc_x(p.init_particles),
+		  acc_y(p.init_particles),
 		  mass(p.init_particles),
 		  rho(p.init_particles),
 		  pressure(p.init_particles),
@@ -73,6 +85,28 @@ struct ParticleList {
 
 	int vec_to_scalar_index(int cx, int cy) {
 		return cx + params.nc[0] * cy;
+	}
+	
+	std::array<int, 2> scalar_index_to_vec(int cell) const {
+		int cx = cell % params.nc[0];
+		int cy = cell / params.nc[0];
+		return {cx, cy};
+	}
+	
+	inline double kernel(double q) {
+		if (q >= 2) return 0.0;
+		
+		double q2 = q*q;
+		double q3 = q2*q;
+		
+		if (q>=1.0)
+			return params.sigma*0.25*(2.0-q)*(2.0-q)*(2.0-q);
+		else
+			return params.sigma*(1.0 -1.5*q2 +0.75*q3);
+	}
+	
+	inline double cole_pressure(double rho) {
+		return params.B*(pow(rho/params.rho0, params.gamma_index)-1);
 	}
 	
 	void init_random() {
@@ -165,13 +199,102 @@ struct ParticleList {
 		mass = reorder(mass, indices);
 		rho = reorder(rho, indices);
 		pressure = reorder(pressure, indices);
+		cell_idx = reorder(cell_idx, indices);
+	}
+	
+	void compute_rho_p_a() {
+		std::fill(rho.begin(), rho.end(), 0);
+		double h = params.h;
+		double rc = params.rc;
+		double h2 = h*h;
+		double rc2 = rc*rc;
+		
+		for (int cell=0; cell<params.no_cells; cell++) {
+			int start_i = cell_start[cell];
+			int end_i = cell_start[cell+1];
+			
+			for (int i = start_i; i<end_i; ++i) {
+			double xi = pos_x[i];
+			double yi = pos_y[i];
+			double rhoi = 0.0;
+			
+			auto [cx, cy] = scalar_index_to_vec(cell);
+			
+				for (auto [dx,dy] : neighbor_offsets) {
+					int ncx = cx + dx;
+					int ncy = cy + dy;
+					
+					if (ncx<0 || ncx>=params.nc[0] || ncy<0 || ncy>=params.nc[1]) continue;
+					
+					int neighbor = vec_to_scalar_index(ncx, ncy);
+					int start_j = cell_start[neighbor];
+					int end_j = cell_start[neighbor+1];
+					
+					for (int j = start_j; j<end_j; ++j) {
+						double rel_x = xi-pos_x[j];
+						double rel_y = yi-pos_y[j];
+						double r2 = rel_x*rel_x + rel_y*rel_y;
+						
+						if (r2 < rc2) {
+							double q = std::sqrt(r2 / h2);
+							rhoi += mass[j] * kernel(q);
+						}
+					}
+				}
+				rho[i] = rhoi;
+				pressure[i] = cole_pressure(rhoi);
+			}
+		}
+	}
+	void compute_density_pressure() {
+		
+		std::fill(rho.end(), rho.end(), 0.0);
+		
+		double h = params.h;
+		double rc = params.rc;
+		double h2 = h*h;
+		
+		for (int i=0; i<no_particles; ++i) {
+			double xi = pos_x[i];
+			double yi = pos_y[i];
+			double rhoi = 0.0;
+			
+			auto cell = get_cell_index(xi, yi);
+			int cx = cell[0];
+			int cy = cell[1];
+			
+			for (int dx = -1; dx <= 1; ++dx) {
+				for (int dy = -1; dy <= 1; ++dy) {
+					int ncx = cx + dx;
+					int ncy = cy + dy;
+					
+					if (ncx<0||ncx>=params.nc[0]||ncy<0||ncy>=params.nc[1])
+						continue;
+						
+					int neighbor_cell = vec_to_scalar_index(ncx, ncy);
+					int start = cell_start[neighbor_cell];
+					int end = cell_start[neighbor_cell+1];
+					
+					for (int j = start; j<end; ++j) {
+						double rel_x = xi - pos_x[j];
+						double rel_y = yi - pos_y[j];
+						double r2 = rel_x*rel_x + rel_y*rel_y;
+						
+						if (r2 < rc*rc) {
+							double q = std::sqrt(r2/h2);
+							
+							double w = kernel(q);
+							rhoi += mass[j]*w;
+						}
+					}
+				}
+			}
+			rho[i] = rhoi;
+			pressure[i] = cole_pressure(rhoi);
+		}
 	}
 };
 
-double cole_pressure(double rho, double c_s, double rho0, double gamma_index) {
-	double B = pow(c_s, 2)*rho0/gamma_index;
-	return B*(pow(rho/rho0, gamma_index)-1);
-}
 
 
 int main(int argc, char *argv[]) {
@@ -198,7 +321,15 @@ int main(int argc, char *argv[]) {
 	pl.init_grid();
 	pl.init_mass();
 	pl.init_vel();
-	std::cout << pl.vel_x[0] << std::endl;
-	
+
+	pl.assign_cell();
+	pl.get_sorter();
+	pl.get_cell_start();
+	pl.compart();
+	pl.compute_rho_p_a();
+
+	std::cout << "rho[1] = " << pl.rho[1] << std::endl;
+	std::cout << "pressure[1] = " << pl.pressure[1] << std::endl;
+		
 	return 0;
 }
