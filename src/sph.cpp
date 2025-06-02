@@ -37,13 +37,13 @@ struct SimulationParams {
 		  max_force(max_force)
 	{
 		h = kappa*res;
-		rc = 2*h;
+		rc = 3.0*h;
 		nc = { int(std::ceil(Lx / rc)), int(std::ceil(Ly / rc)) };
 		no_cells = nc[0] * nc[1];
 		Nx = int(Lx/res);
 		Ny = int(Ly/res);
 		init_particles = Nx*Ny;
-		sigma = 10.0/(7.0*M_PI*h*h);
+		sigma = 7.0/(478.0*M_PI*h*h);//10.0/(7.0*M_PI*h*h);
 		B = c_s*c_s*rho0/gamma_index;
 	}
 };
@@ -100,24 +100,17 @@ struct ParticleList {
 	}
 	
 	inline double kernel(double q) const {
-		if (q >= 2) return 0.0;
-		
-		double q2 = q*q;
-		double q3 = q2*q;
-		
-		if (q>=1.0)
-			return params.sigma*0.25*(2.0-q)*(2.0-q)*(2.0-q);
-		else
-			return params.sigma*(1.0 -1.5*q2 +0.75*q3);
+		if (q >= 3.0) return 0.0;
+		else if (q >= 2.0) return params.sigma*pow(3.0-q,5);
+		else if (q >= 2.0) return params.sigma*(pow(3.0-q,5) - 6*pow(2.0-q,5));
+		else if (q >= 1.0) return params.sigma*(pow(3.0-q,5) - 6*pow(2.0-q,5) + 15*pow(1.0-q,5));
 	}
 
 	inline double deriv_kernel(double q) {
-		if (q>=2) return 0.0;
-
-		if (q>=1.0)
-			return -1*params.sigma*0.75*(2.0-q)*(2.0-q);
-		else
-			return params.sigma*(-3.0*q + 2.25*q*q);
+		if (q >= 3.0) return 0.0;
+		else if (q >= 2.0) return -5*params.sigma*pow(3.0-q,4);
+		else if (q >= 2.0) return -5*params.sigma*(pow(3.0-q,4) - 6*pow(2.0-q,4));
+		else if (q >= 1.0) return -5*params.sigma*(pow(3.0-q,4) - 6*pow(2.0-q,4) + 15*pow(1.0-q,4));
 	}
 	
 	inline double cole_pressure(double rho) {
