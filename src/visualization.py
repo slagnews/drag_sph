@@ -35,11 +35,11 @@ def read_all_output(filename):
             pos = np.stack((x, y), axis=1)     # shape: (N, 2)
             vel = np.stack((vx, vy), axis=1)   # shape: (N, 2)
 
-            positions.append(pos)
-            velocities.append(vel)
+            positions.append(np.array(pos))
+            velocities.append(np.array(vel))
 
     # shape: (timesteps, N, 2)
-    return np.array(positions), np.array(velocities)
+    return positions, velocities
 
 
 def kernel(q, sigma):
@@ -144,14 +144,14 @@ def get_velocity_grid(positions, velocities, masses, params, grid_size=100):
 
     return X, Y, Vx, Vy, V
 
-def animate(positions, velocities, params, masses, field_type="density", filename="figures/anim.mp4", interval=100):
+def animate(positions, velocities, params, masses, field_type="density", interval=100):
     fig, ax = plt.subplots()
     ax.set_xlim(0, float(params.Lx))
     ax.set_ylim(0, float(params.Ly))
     ax.set_aspect("equal")
 
     # Plot particles
-    particles, = ax.plot(positions[0,:,0], positions[0,:,1], linestyle="None", marker=".", color="red")
+    particles, = ax.plot(positions[0][:,0], positions[0][:,1], linestyle="None", marker=".", color="red")
 
     # Plot central object
     phi = np.linspace(0, 2*np.pi, 100)
@@ -161,29 +161,30 @@ def animate(positions, velocities, params, masses, field_type="density", filenam
 
     # Plot field (using imshow for simplicity and speed)
     if field_type == "density":
-        _, _, field_data = get_density_grid(positions[0,:,0], positions[0,:,1], params.Lx, params.Ly, masses, params.sigma)
+        _, _, field_data = get_density_grid(positions[0][:,0], positions[0][:,1], params.Lx, params.Ly, masses, params.sigma)
+        field_img = ax.imshow(field_data, extent=[0, params.Lx, 0, params.Ly], origin="lower", cmap="viridis")
     elif field_type == "velocity":
         _, _, _, _, field_data = get_velocity_grid(positions[0], velocities[0], masses, params)
-    else:
-        raise ValueError("Unknown field_type")
+        field_img = ax.imshow(field_data, extent=[0, params.Lx, 0, params.Ly], origin="lower", cmap="viridis")
 
-    field_img = ax.imshow(field_data, extent=[0, params.Lx, 0, params.Ly], origin="lower", cmap="viridis")
-    fig.colorbar(field_img, ax=ax)
+    
+    #fig.colorbar(field_img, ax=ax)
 
     def update(frame):
-        particles.set_xdata(positions[frame,:,0])
-        particles.set_ydata(positions[frame,:,1])
+        particles.set_xdata(positions[frame][:,0])
+        particles.set_ydata(positions[frame][:,1])
+
         if field_type == "density":
-            _, _, field_data = get_density_grid(positions[frame,:,0], positions[frame,:,1], params.Lx, params.Ly, masses, params.sigma)
+            _, _, field_data = get_density_grid(positions[frame][:,0], positions[frame][:,1], params.Lx, params.Ly, masses, params.sigma)
+            field_img.set_data(field_data)
         elif field_type == "velocity":
             _, _, _, _, field_data = get_velocity_grid(positions[frame], velocities[frame], masses, params)
-        field_img.set_data(field_data)
+            field_img.set_data(field_data)
         print(f"frame {frame+1} of {len(positions)} done!", end='\r')
-        return particles, field_img
+        return particles
 
     anim = FuncAnimation(fig, update, frames=len(positions), interval=interval)
-    anim.save(filename)
-    plt.show()
+    return anim
 
 def calculate_energies(positions, velocities, params, masses):
     # Total mass

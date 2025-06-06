@@ -8,7 +8,7 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(sph_cpp, m) {
     py::class_<SimulationParams>(m, "SimulationParams")
-        .def(py::init<double, int, double, double, double, double, double, double, double, double, double, double, double>())
+        .def(py::init<double, int, double, double, double, double, double, double, double, double, double, double, double, double, double>())
         .def_readonly("Lx", &SimulationParams::Lx)
         .def_readonly("Ly", &SimulationParams::Ly)
         .def_readonly("Nx", &SimulationParams::Nx)
@@ -26,6 +26,8 @@ PYBIND11_MODULE(sph_cpp, m) {
         .def_readonly("central_radius", &SimulationParams::central_radius)
         .def_readonly("boundary_width", &SimulationParams::boundary_width)
         .def_readonly("max_force", &SimulationParams::max_force)
+        .def_readonly("inflow_factor", &SimulationParams::inflow_factor)
+        .def_readonly("outflow_factor", &SimulationParams::outflow_factor)
         ;
 
     py::class_<ParticleList>(m, "ParticleList")
@@ -34,6 +36,7 @@ PYBIND11_MODULE(sph_cpp, m) {
         .def("init_random", &ParticleList::init_random)
         .def("init_mass", &ParticleList::init_mass)
         .def("init_vel", &ParticleList::init_vel)
+        .def("init_type", &ParticleList::init_type)
         .def("integrate", &ParticleList::integrate)
         .def("kernel", [](const ParticleList &pl, double q) { return pl.kernel(q); });
         //.def("set_initial_positions", &ParticleList::set_initial_positions)

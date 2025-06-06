@@ -7,6 +7,7 @@
 #include <numeric>
 #include <iomanip>
 #include <fstream>
+#include <omp.h>
 
 constexpr int neighbor_count = 9;
 constexpr int neighbor_offsets[neighbor_count][2] = {
@@ -17,11 +18,12 @@ constexpr int neighbor_offsets[neighbor_count][2] = {
 
 
 struct SimulationParams {
-	double res, Lx, Ly, kappa, h, rc, v0, dt, c_s, P0, rho0, sigma, beta;
+	double res, Lx, Ly, kappa, h, rc, v0, dt, c_s, P0, rho0, sigma, beta, inflow_factor, outflow_factor;
 	int no_cells, no_steps, Nx, Ny, init_particles;
 	std::array<int, 2> nc;
 	double central_radius, boundary_width, max_force;
-	SimulationParams(double res, int no_steps, double Lx, double Ly, double rho0, double kappa, double v0, double dt, double c_s, double beta, double central_radius, double boundary_width, double max_force)
+	SimulationParams(double res, int no_steps, double Lx, double Ly, double rho0, double kappa, double v0, double dt,
+	 double c_s, double beta, double central_radius, double boundary_width, double max_force, double inflow_factor, double outflow_factor)
 		: res(res),
 		  no_steps(no_steps),
 		  Lx(Lx),
@@ -34,7 +36,9 @@ struct SimulationParams {
 		  beta(beta),
 		  central_radius(central_radius),
 		  boundary_width(boundary_width),
-		  max_force(max_force)
+		  max_force(max_force),
+		  inflow_factor(inflow_factor),
+		  outflow_factor(outflow_factor)
 	{
 		h = kappa*res;
 		rc = 3.0*h;
@@ -48,6 +52,13 @@ struct SimulationParams {
 	}
 };
 
+enum ParticleType {
+	inflow,
+	outflow,
+	mainflow,
+	ghost
+};
+
 struct ParticleList {
 	// Particle information
 	int no_particles;
@@ -57,6 +68,7 @@ struct ParticleList {
 	// Particle information vectors
 	std::vector<double> pos_x, pos_y, vel_x, vel_y, acc_x, acc_y, mass, rho, pressure;
 	std::vector<int> cell_idx, indices, cell_counts, cell_start;
+	std::vector<ParticleType> type;
 	
 	// Randomizer generator and distribution
 	std::mt19937 engine;
@@ -78,6 +90,7 @@ struct ParticleList {
 		  pressure(p.init_particles),
 		  cell_idx(p.init_particles),
 		  indices(p.init_particles),
+		  type(p.init_particles),
 		  cell_counts(p.no_cells),
 		  cell_start(p.no_cells+1),
 		  engine(std::random_device{}()),
@@ -102,15 +115,15 @@ struct ParticleList {
 	inline double kernel(double q) const {
 		if (q >= 3.0) return 0.0;
 		else if (q >= 2.0) return params.sigma*pow(3.0-q,5);
-		else if (q >= 2.0) return params.sigma*(pow(3.0-q,5) - 6*pow(2.0-q,5));
-		else if (q >= 1.0) return params.sigma*(pow(3.0-q,5) - 6*pow(2.0-q,5) + 15*pow(1.0-q,5));
+		else if (q >= 1.0) return params.sigma*(pow(3.0-q,5) - 6*pow(2.0-q,5));
+		else return params.sigma*(pow(3.0-q,5) - 6*pow(2.0-q,5) + 15*pow(1.0-q,5));
 	}
 
 	inline double deriv_kernel(double q) {
 		if (q >= 3.0) return 0.0;
 		else if (q >= 2.0) return -5*params.sigma*pow(3.0-q,4);
-		else if (q >= 2.0) return -5*params.sigma*(pow(3.0-q,4) - 6*pow(2.0-q,4));
-		else if (q >= 1.0) return -5*params.sigma*(pow(3.0-q,4) - 6*pow(2.0-q,4) + 15*pow(1.0-q,4));
+		else if (q >= 1.0) return -5*params.sigma*(pow(3.0-q,4) - 6*pow(2.0-q,4));
+		else return -5*params.sigma*(pow(3.0-q,4) - 6*pow(2.0-q,4) + 15*pow(1.0-q,4));
 	}
 	
 	inline double calculate_pressure(double rho) {
@@ -137,20 +150,40 @@ struct ParticleList {
 	}
 	
 	void init_mass() {
+		#pragma omp parallel for
 		for (int i=0; i<no_particles; ++i) {
 			mass[i] = params.rho0*params.res*params.res;
 		}
 	}
 	
 	void init_vel() {
+		#pragma omp parallel for
 		for (int i=0; i<no_particles; ++i) {
 			vel_x[i] = params.v0;
 			vel_y[i] = 0;
 		}
 	}
+
+	void init_type() {
+		#pragma omp parallel for
+		for (int i=0; i< no_particles; ++i) {
+			if (pos_x[i] <= params.Lx * params.inflow_factor) {
+				type[i] = ParticleType::inflow;
+			}
+
+			else if (pos_x[i] >= (params.Lx - params.Lx * params.outflow_factor)) {
+				type[i] = ParticleType::outflow;
+			}
+
+			else {
+				type[i] = ParticleType::mainflow;
+			}
+		}
+	}
 	
 	void assign_cell() {
 	// Assign the corresponding cell to each particle
+		#pragma omp parallel for
 		for (int i = 0; i < no_particles; ++i) {
 			auto cell = get_cell_index(pos_x[i], pos_y[i]);
 			int cx = cell[0];
@@ -158,6 +191,80 @@ struct ParticleList {
 			int c = vec_to_scalar_index(cx, cy);
 			cell_idx[i] = c;
 		}
+	}
+
+	void manage_inflow_outflow() {
+		// First we erase particles that have left the domain
+		std::vector<bool> should_erase(no_particles, false);
+
+		for (int i=0; i < no_particles; ++i) {
+			if (pos_x[i] > params.Lx) {
+				should_erase[i] = true;
+			}
+		}
+
+		int write_index = 0;
+		for (int read_index=0; read_index < no_particles; ++read_index) {
+			if (!should_erase[read_index]) {
+				if (write_index != read_index) {
+					pos_x[write_index] = pos_x[read_index];
+					pos_y[write_index] = pos_y[read_index];
+					vel_x[write_index] = vel_x[read_index];
+					vel_y[write_index] = vel_y[read_index];
+					type[write_index] = type[read_index];
+				}
+				++write_index;
+			}
+		}
+
+		no_particles = write_index; // Update the number of particles
+
+		// Shorten all of the lists by the new number of particles
+		pos_x.resize(no_particles);
+		pos_y.resize(no_particles);
+		vel_x.resize(no_particles);
+		vel_y.resize(no_particles);
+		acc_x.resize(no_particles);
+		acc_y.resize(no_particles);
+		mass.resize(no_particles);
+		rho.resize(no_particles);
+		pressure.resize(no_particles);
+		cell_idx.resize(no_particles);
+		indices.resize(no_particles);
+		type.resize(no_particles);
+
+
+		for (int i=0; i < no_particles; ++i) {
+			
+			if ((pos_x[i] > params.Lx * params.inflow_factor) && (type[i] == ParticleType::inflow)) {
+				// If particle went from inflow to mainflow, reassign, and init new particle in inflow
+				type[i] = ParticleType::mainflow;
+
+				pos_x.push_back(0.0);
+				pos_y.push_back(pos_y[i]); // With y position of previous particle
+
+				vel_x.push_back(params.v0);
+				vel_y.push_back(0.0);
+
+				mass.push_back(params.rho0*params.res*params.res);
+				type.push_back(ParticleType::inflow);
+
+				// The rest of these push back statements are purely to extend the vectors
+				acc_x.push_back(0.0);
+				acc_y.push_back(0.0);
+				rho.push_back(0.0);
+				pressure.push_back(0.0);
+				cell_idx.push_back(0.0);
+				indices.push_back(0.0);
+			} 
+
+			else if ((pos_x[i] >= (params.Lx - params.Lx * params.outflow_factor)) && (type[i] == ParticleType::mainflow)) {
+				// If particles went from main flow to outflow, change type
+				type[i] = ParticleType::outflow;
+			}
+		}
+
+		no_particles = pos_x.size(); // Intermediate update of the number of particles
 	}
 
 	void get_sorter() {
@@ -210,6 +317,7 @@ struct ParticleList {
 		auto new_rho = reorder(rho, indices);
 		auto new_pressure = reorder(pressure, indices);
 		auto new_cell_idx = reorder(cell_idx, indices);
+		auto new_type = reorder(type, indices);
 
 		pos_x = std::move(new_pos_x);
 		pos_y = std::move(new_pos_y);
@@ -221,6 +329,7 @@ struct ParticleList {
 		rho = std::move(new_rho);
 		pressure = std::move(new_pressure);
 		cell_idx = std::move(new_cell_idx);
+		type = std::move(new_type);
 	}
 	
 	void compute_rho_p() {
@@ -230,6 +339,7 @@ struct ParticleList {
 		double h2 = h*h;
 		double rc2 = rc*rc;
 
+		#pragma omp parallel for
 		for (int cell=0; cell<params.no_cells; cell++) {
 			int start_i = cell_start[cell];
 			int end_i = cell_start[cell+1];
@@ -276,11 +386,14 @@ struct ParticleList {
 		double h2 = h*h;
 		double rc2 = rc*rc;
 		
+		#pragma omp parallel for
 		for (int cell=0; cell<params.no_cells; cell++) {
 			int start_i = cell_start[cell];
 			int end_i = cell_start[cell+1];
 			
 			for (int i = start_i; i<end_i; ++i) {
+			if (type[i] == ParticleType::inflow || type[i] == ParticleType::outflow) continue;
+
 			double xi = pos_x[i];
 			double yi = pos_y[i];
 			double acc_xi = 0.0;
@@ -354,6 +467,7 @@ struct ParticleList {
 	}
 
 	void compute_v_half() {
+		#pragma omp parallel for
 		for (int i=0; i<no_particles; ++i) {
 			vel_x[i] += 0.5 * params.dt * acc_x[i];
 			vel_y[i] += 0.5 * params.dt * acc_y[i];
@@ -361,6 +475,7 @@ struct ParticleList {
 	}
 
 	void compute_pos() {
+		#pragma omp parallel for
 		for (int i=0; i<no_particles; ++i) {
 			pos_x[i] += params.dt * vel_x[i];
 			pos_y[i] += params.dt * vel_y[i];
@@ -368,6 +483,7 @@ struct ParticleList {
 	}
 
 	void compute_v_full() {
+		#pragma omp parallel for
 		for (int i=0; i<no_particles; ++i) {
 			vel_x[i] += 0.5 * params.dt * acc_x[i];
 			vel_y[i] += 0.5 * params.dt * acc_y[i];
@@ -392,10 +508,8 @@ struct ParticleList {
 
 
 	void periodic() {
+		#pragma omp parallel for
 		for (int i = 0; i < no_particles; ++i) {
-			pos_x[i] = std::fmod(pos_x[i], params.Lx);
-			if (pos_x[i] < 0) pos_x[i] += params.Lx;
-
 			pos_y[i] = std::fmod(pos_y[i], params.Ly);
 			if (pos_y[i] < 0) pos_y[i] += params.Ly;
 		}
@@ -405,6 +519,7 @@ struct ParticleList {
 		std::ofstream out("all_output.bin", std::ios::binary);
 
 		for (int step=0; step<params.no_steps; step++) {
+			manage_inflow_outflow();
 			compart();
 			compute_rho_p();
 			compute_a();
@@ -412,19 +527,20 @@ struct ParticleList {
 			compute_v_half();
 			compute_pos();
 			periodic();
+			
 			compute_v_full();
 			write_frame(out);
 			current_step += 1;
 		}
 
-		out.close();
+		//out.close();
 	}
 };
 
 
 
 int main(int argc, char *argv[]) {
-	if (argc < 11) {
+	if (argc < 16) {
 		std::cerr << "Not enough arguments given" << std::endl;
 		return 1;
 	}
@@ -439,15 +555,18 @@ int main(int argc, char *argv[]) {
 		atof(argv[7]), // v0
 		atof(argv[8]), // dt
 		atof(argv[9]), // c_s
-		atof(argv[10]), // gamma_index
+		atof(argv[10]), // beta
 		atof(argv[11]), // central_radius
 		atof(argv[12]), // boundary_width
-		atof(argv[13])  // max_force
+		atof(argv[13]),  // max_force
+		atof(argv[14]),	// inflow_factor
+		atof(argv[15]) //outflow_factor
 	);
 	
 	ParticleList pl(params);
 	
 	pl.init_grid();
+	pl.init_type();
 	pl.init_mass();
 	pl.init_vel();
 
