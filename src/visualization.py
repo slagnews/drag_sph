@@ -10,36 +10,34 @@ import numpy as np
 def read_all_output(filename):
     positions = []
     velocities = []
+    types_all = []
+
     with open(filename, "rb") as f:
         while True:
             int_bytes = f.read(4)
             if not int_bytes:
-                break  # EOF
+                break
             N = struct.unpack("i", int_bytes)[0]
 
-            # Read positions and velocities
-            x_bytes = f.read(8 * N)
-            y_bytes = f.read(8 * N)
-            vx_bytes = f.read(8 * N)
-            vy_bytes = f.read(8 * N)
+            x = np.frombuffer(f.read(8 * N), dtype=np.float64)
+            y = np.frombuffer(f.read(8 * N), dtype=np.float64)
+            vx = np.frombuffer(f.read(8 * N), dtype=np.float64)
+            vy = np.frombuffer(f.read(8 * N), dtype=np.float64)
+            types = np.frombuffer(f.read(N), dtype=np.uint8)
 
-            if any(len(b) < 8 * N for b in [x_bytes, y_bytes, vx_bytes, vy_bytes]):
-                print("Warning: Incomplete frame at the end of the file")
+            if any(len(arr) < N for arr in [x, y, vx, vy, types]):
+                print("Warning: Incomplete frame at end of file")
                 break
 
-            x = np.frombuffer(x_bytes, dtype=np.float64)
-            y = np.frombuffer(y_bytes, dtype=np.float64)
-            vx = np.frombuffer(vx_bytes, dtype=np.float64)
-            vy = np.frombuffer(vy_bytes, dtype=np.float64)
+            pos = np.stack((x, y), axis=1)
+            vel = np.stack((vx, vy), axis=1)
 
-            pos = np.stack((x, y), axis=1)     # shape: (N, 2)
-            vel = np.stack((vx, vy), axis=1)   # shape: (N, 2)
+            positions.append(pos)
+            velocities.append(vel)
+            types_all.append(types)
 
-            positions.append(np.array(pos))
-            velocities.append(np.array(vel))
+    return positions, velocities, types_all
 
-    # shape: (timesteps, N, 2)
-    return positions, velocities
 
 
 def kernel(q, sigma):
@@ -153,11 +151,15 @@ def animate(positions, velocities, params, masses, field_type="density", interva
     # Plot particles
     particles, = ax.plot(positions[0][:,0], positions[0][:,1], linestyle="None", marker=".", color="red")
 
+    # Plot in- and outflow boundaries
+    ax.axvline(params.inflow_factor*params.Lx, color="black", linestyle="--")
+    ax.axvline((1-params.outflow_factor)*params.Lx, color="black", linestyle="--")
+
     # Plot central object
     phi = np.linspace(0, 2*np.pi, 100)
     ax.plot(params.Lx/2.0 + params.central_radius*np.cos(phi),
             params.Ly/2.0 + params.central_radius*np.sin(phi),
-            color="white")
+            color="black")
 
     # Plot field (using imshow for simplicity and speed)
     if field_type == "density":
@@ -180,7 +182,7 @@ def animate(positions, velocities, params, masses, field_type="density", interva
         elif field_type == "velocity":
             _, _, _, _, field_data = get_velocity_grid(positions[frame], velocities[frame], masses, params)
             field_img.set_data(field_data)
-        print(f"frame {frame+1} of {len(positions)} done!", end='\r')
+        print(f"frame {frame+1} of {len(positions)} done, {len(positions[frame])} particles in sim", end='\r')
         return particles
 
     anim = FuncAnimation(fig, update, frames=len(positions), interval=interval)

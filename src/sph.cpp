@@ -199,6 +199,7 @@ struct ParticleList {
 
 		for (int i=0; i < no_particles; ++i) {
 			if (pos_x[i] > params.Lx) {
+				// Particles that leave the simulation on the right side should be removed
 				should_erase[i] = true;
 			}
 		}
@@ -504,6 +505,11 @@ struct ParticleList {
 		out.write(reinterpret_cast<const char*>(pos_y.data()), sizeof(double) * N);
 		out.write(reinterpret_cast<const char*>(vel_x.data()), sizeof(double) * N);
 		out.write(reinterpret_cast<const char*>(vel_y.data()), sizeof(double) * N);
+		std::vector<uint8_t> types_u8(N);
+		for (int i = 0; i < N; ++i) {
+			types_u8[i] = static_cast<uint8_t>(type[i]);
+		}
+		out.write(reinterpret_cast<const char*>(types_u8.data()), sizeof(uint8_t) * N);
 	}
 
 
