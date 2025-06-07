@@ -202,6 +202,14 @@ struct ParticleList {
 				// Particles that leave the simulation on the right side should be removed
 				should_erase[i] = true;
 			}
+			else if (pos_x[i] < 0.0){
+				// Particles that leave the simulation on the left side should be removed
+				should_erase[i] = true;
+			}
+			else if (pos_x[i] < params.inflow_factor*params.Lx && type[i] != ParticleType::inflow){
+				// Mainflow particles re-entering the inflow should be removed
+				should_erase[i] = true;
+			}
 		}
 
 		int write_index = 0;

@@ -188,6 +188,48 @@ def animate(positions, velocities, params, masses, field_type="density", interva
     anim = FuncAnimation(fig, update, frames=len(positions), interval=interval)
     return anim
 
+def animate_types(positions, velocities, types, params, masses, interval=100):
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, float(params.Lx))
+    ax.set_ylim(0, float(params.Ly))
+    ax.set_aspect("equal")
+
+    # Plot particles
+    inflow_particles, = ax.plot(positions[0][:,0][types[0]==0.0], positions[0][:,1][types[0]==0.0], linestyle="None", marker=".", color="C0")
+    mainflow_particles, = ax.plot(positions[0][:,0][types[0]==2.0], positions[0][:,1][types[0]==2.0], linestyle="None", marker=".", color="C1")
+    outflow_particles, = ax.plot(positions[0][:,0][types[0]==1.0], positions[0][:,1][types[0]==1.0], linestyle="None", marker=".", color="C2")
+    ghost_particles, = ax.plot(positions[0][:,0][types[0]==3.0], positions[0][:,1][types[0]==3.0], linestyle="None", marker=".", color="black")
+
+    # Plot in- and outflow boundaries
+    ax.axvline(params.inflow_factor*params.Lx, color="black", linestyle="--")
+    ax.axvline((1-params.outflow_factor)*params.Lx, color="black", linestyle="--")
+
+    # Plot central object
+    phi = np.linspace(0, 2*np.pi, 100)
+    ax.plot(params.Lx/2.0 + params.central_radius*np.cos(phi),
+            params.Ly/2.0 + params.central_radius*np.sin(phi),
+            color="black")
+    
+    def update(frame):
+        inflow_particles.set_xdata(positions[frame][:,0][types[frame]==0.0])
+        inflow_particles.set_ydata(positions[frame][:,1][types[frame]==0.0])
+
+        mainflow_particles.set_xdata(positions[frame][:,0][types[frame]==2.0])
+        mainflow_particles.set_ydata(positions[frame][:,1][types[frame]==2.0])
+
+        outflow_particles.set_xdata(positions[frame][:,0][types[frame]==1.0])
+        outflow_particles.set_ydata(positions[frame][:,1][types[frame]==1.0])
+
+        ghost_particles.set_xdata(positions[frame][:,0][types[frame]==3.0])
+        ghost_particles.set_ydata(positions[frame][:,1][types[frame]==3.0])
+
+        print(f"Frame {frame+1} done", end="\r")
+
+        return inflow_particles, mainflow_particles, outflow_particles, ghost_particles
+
+    anim = FuncAnimation(fig, update, frames=len(positions), interval=interval)
+    return anim
+
 def calculate_energies(positions, velocities, params, masses):
     # Total mass
     M = np.sum(masses)
