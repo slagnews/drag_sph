@@ -18,12 +18,12 @@ constexpr int neighbor_offsets[neighbor_count][2] = {
 
 
 struct SimulationParams {
-	double res, Lx, Ly, kappa, h, rc, v0, dt, c_s, P0, rho0, sigma, beta, inflow_factor, outflow_factor, kinematic_viscosity;
+	double res, Lx, Ly, kappa, h, rc, v0, dt, c_s, P0, rho0, sigma, beta, inflow_factor, outflow_factor, kinematic_viscosity, max_beta;
 	int no_cells, no_steps, Nx, Ny, init_particles;
 	std::array<int, 2> nc;
 	double central_radius, boundary_width, max_force;
 	SimulationParams(double res, int no_steps, double Lx, double Ly, double rho0, double kappa, double v0, double dt,
-	 double c_s, double beta, double central_radius, double boundary_width, double max_force, double inflow_factor, double outflow_factor, double kinematic_viscosity)
+	 double c_s, double beta, double central_radius, double boundary_width, double max_force, double inflow_factor, double outflow_factor, double kinematic_viscosity, double max_beta)
 		: res(res),
 		  no_steps(no_steps),
 		  Lx(Lx),
@@ -39,7 +39,8 @@ struct SimulationParams {
 		  max_force(max_force),
 		  inflow_factor(inflow_factor),
 		  outflow_factor(outflow_factor),
-		  kinematic_viscosity(kinematic_viscosity)
+		  kinematic_viscosity(kinematic_viscosity),
+		  max_beta(max_beta)
 	{
 		h = kappa*res;
 		rc = 3.0*h;
@@ -126,6 +127,13 @@ struct ParticleList {
 		else if (q >= 2.0) return -5*params.sigma*pow(3.0-q,4);
 		else if (q >= 1.0) return -5*params.sigma*(pow(3.0-q,4) - 6*pow(2.0-q,4));
 		else return -5*params.sigma*(pow(3.0-q,4) - 6*pow(2.0-q,4) + 15*pow(1.0-q,4));
+	}
+
+	inline double second_deriv_kernel(double q){
+		if (q >= 3.0) return 0.0;
+		else if (q >= 2.0) return 20*params.sigma*pow(3.0-q,3);
+		else if (q >= 1.0) return 20*params.sigma*(pow(3.0-q,3) - 6*pow(2.0-q,3));
+		else return 20*params.sigma*(pow(3.0-q,3) - 6*pow(2.0-q,3) + 15*pow(1.0-q,3));
 	}
 	
 	inline double calculate_pressure(double rho) {
@@ -465,6 +473,8 @@ struct ParticleList {
 
 						double rel_x = xi-pos_x[j];
 						double rel_y = yi-pos_y[j];
+						//double rel_velx = 0.0;
+						//double rel_vely = 0.0;
 						double r2 = rel_x*rel_x + rel_y*rel_y;
 						
 						if (r2 < rc2 && r2 > 1e-12) {
@@ -478,6 +488,7 @@ struct ParticleList {
 
 							acc_xi += common * rel_x;
 							acc_yi += common * rel_y;
+
 						}
 					}
 				}
@@ -486,7 +497,7 @@ struct ParticleList {
 			}
 		}
 	}
-	/** 
+	
 	void compute_viscosity_forces(){
 		double h = params.h;
 		double rc = params.rc;
@@ -503,8 +514,6 @@ struct ParticleList {
 
 				double xi = pos_x[i];
 				double yi = pos_y[i];
-				double vxi = vel_x[i];
-				double vyi = vel_y[i];
 
 				double acc_xi = 0.0;
 				double acc_yi = 0.0;
@@ -527,28 +536,48 @@ struct ParticleList {
 						double rel_x = xi-pos_x[j];
 						double rel_y = yi-pos_y[j];
 						double r2 = rel_x*rel_x + rel_y*rel_y;
+
+						double rel_velx = 0.0;
+						double rel_vely = 0.0;
 						
 						if (r2 < rc2 && r2 > 1e-12) {
+							if (type[j] == ParticleType::ghost){
+								// Ghost particles get a no-slip artificial velocity
+								double d_i = std::sqrt((pos_x[i]-params.Lx/2)*(pos_y[i]-params.Ly/2)) - params.central_radius;
+								double d_j = std::sqrt((pos_x[j]-params.Lx/2)*(pos_y[j]-params.Ly/2)) - params.central_radius;
+								double beta = 1 + d_j/d_i;
+								if ( beta > params.max_beta ) beta = params.max_beta;
+								double rel_velx = beta*vel_x[i];
+								double rel_vely = beta*vel_y[i];
+							} else {
+								// Normal particles just have relative velocities
+								double rel_velx = vel_x[i] - vel_x[j];
+								double rel_vely = vel_y[i] - vel_y[j];
+							}
+
+							double mu_i = params.kinematic_viscosity*rho[i];
+							double mu_j = params.kinematic_viscosity*rho[j];
+
 							double r = std::sqrt(r2);
 							double q = std::sqrt(r2 / h2);
 
-							double common = -1*mass[j]*
-							(pressure[i]/(rho[i]*rho[i]) + 
-								pressure[j]/(rho[j]*rho[j]))
-							*deriv_kernel(q)/(h*r);
+							double common = mass[j]*(mu_i+mu_j)/(2*rho[i]*rho[j])*(
+								2*(1/r*deriv_kernel(q)/h)
+								+ 1/r*(-2/q*deriv_kernel(q)+second_deriv_kernel(q))
+							);
 
-							acc_xi += common * rel_x;
-							acc_yi += common * rel_y;
+							acc_xi += common * rel_velx;
+							acc_yi += common * rel_vely;
 						}
 					}
 				}
-				acc_x[i] = acc_xi;
-				acc_y[i] = acc_yi;
+				acc_x[i] += acc_xi;
+				acc_y[i] += acc_yi;
 			}
 		}
 	}
-	}
-	*/
+	
+	
 
 	void compute_central_object_forces(){
 		double Lx = params.Lx;
@@ -652,6 +681,7 @@ struct ParticleList {
 			compart();
 			compute_rho_p();
 			compute_pressure_forces();
+			compute_viscosity_forces();
 			compute_central_object_forces();
 			compute_v_half();
 			compute_pos();

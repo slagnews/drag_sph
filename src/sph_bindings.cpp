@@ -8,7 +8,7 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(sph_cpp, m) {
     py::class_<SimulationParams>(m, "SimulationParams")
-        .def(py::init<double, int, double, double, double, double, double, double, double, double, double, double, double, double, double, double>())
+        .def(py::init<double, int, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double>())
         .def_readonly("Lx", &SimulationParams::Lx)
         .def_readonly("Ly", &SimulationParams::Ly)
         .def_readonly("Nx", &SimulationParams::Nx)
@@ -29,6 +29,7 @@ PYBIND11_MODULE(sph_cpp, m) {
         .def_readonly("inflow_factor", &SimulationParams::inflow_factor)
         .def_readonly("outflow_factor", &SimulationParams::outflow_factor)
         .def_readonly("kinematic_viscosity", &SimulationParams::kinematic_viscosity)
+        .def_readonly("max_beta", &SimulationParams::max_beta)
         ;
 
     py::class_<ParticleList>(m, "ParticleList")
