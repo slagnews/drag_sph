@@ -18,12 +18,12 @@ constexpr int neighbor_offsets[neighbor_count][2] = {
 
 
 struct SimulationParams {
-	double res, Lx, Ly, kappa, h, rc, v0, dt, c_s, P0, rho0, sigma, beta, inflow_factor, outflow_factor;
+	double res, Lx, Ly, kappa, h, rc, v0, dt, c_s, P0, rho0, sigma, beta, inflow_factor, outflow_factor, kinematic_viscosity;
 	int no_cells, no_steps, Nx, Ny, init_particles;
 	std::array<int, 2> nc;
 	double central_radius, boundary_width, max_force;
 	SimulationParams(double res, int no_steps, double Lx, double Ly, double rho0, double kappa, double v0, double dt,
-	 double c_s, double beta, double central_radius, double boundary_width, double max_force, double inflow_factor, double outflow_factor)
+	 double c_s, double beta, double central_radius, double boundary_width, double max_force, double inflow_factor, double outflow_factor, double kinematic_viscosity)
 		: res(res),
 		  no_steps(no_steps),
 		  Lx(Lx),
@@ -38,7 +38,8 @@ struct SimulationParams {
 		  boundary_width(boundary_width),
 		  max_force(max_force),
 		  inflow_factor(inflow_factor),
-		  outflow_factor(outflow_factor)
+		  outflow_factor(outflow_factor),
+		  kinematic_viscosity(kinematic_viscosity)
 	{
 		h = kappa*res;
 		rc = 3.0*h;
@@ -64,6 +65,7 @@ struct ParticleList {
 	int no_particles;
 	int current_step;
 	const SimulationParams& params;
+	double drag_force;
 	
 	// Particle information vectors
 	std::vector<double> pos_x, pos_y, vel_x, vel_y, acc_x, acc_y, mass, rho, pressure;
@@ -147,7 +149,7 @@ struct ParticleList {
 				++index;
 			}
 		}
-
+		/**
 				std::vector<bool> should_erase(no_particles, false);
 
 		for (int i=0; i < no_particles; ++i) {
@@ -186,6 +188,7 @@ struct ParticleList {
 		cell_idx.resize(no_particles);
 		indices.resize(no_particles);
 		type.resize(no_particles);
+		 */
 	}
 	
 	void init_mass() {
@@ -213,7 +216,9 @@ struct ParticleList {
 			else if (pos_x[i] >= (params.Lx - params.Lx * params.outflow_factor)) {
 				type[i] = ParticleType::outflow;
 			}
-
+			else if ((pos_x[i]-params.Lx/2)*(pos_x[i]-params.Lx/2) + (pos_y[i]-params.Ly/2)*(pos_y[i]-params.Ly/2) < params.central_radius*params.central_radius){
+				type[i] = ParticleType::ghost;
+			}
 			else {
 				type[i] = ParticleType::mainflow;
 			}
@@ -422,7 +427,7 @@ struct ParticleList {
 		}
 	}
 
-	void compute_a() {
+	void compute_pressure_forces() {
 		std::fill(acc_x.begin(), acc_x.end(), 0);
 		std::fill(acc_y.begin(), acc_y.end(), 0);
 		double h = params.h;
@@ -436,14 +441,14 @@ struct ParticleList {
 			int end_i = cell_start[cell+1];
 			
 			for (int i = start_i; i<end_i; ++i) {
-			if (type[i] == ParticleType::inflow || type[i] == ParticleType::outflow) continue;
+				if (type[i] == ParticleType::inflow || type[i] == ParticleType::outflow) continue;
 
-			double xi = pos_x[i];
-			double yi = pos_y[i];
-			double acc_xi = 0.0;
-			double acc_yi = 0.0;
-			
-			auto [cx, cy] = scalar_index_to_vec(cell);
+				double xi = pos_x[i];
+				double yi = pos_y[i];
+				double acc_xi = 0.0;
+				double acc_yi = 0.0;
+				
+				auto [cx, cy] = scalar_index_to_vec(cell);
 			
 				for (auto [dx,dy] : neighbor_offsets) {
 					int ncx = cx + dx;
@@ -481,8 +486,71 @@ struct ParticleList {
 			}
 		}
 	}
+	/** 
+	void compute_viscosity_forces(){
+		double h = params.h;
+		double rc = params.rc;
+		double h2 = h*h;
+		double rc2 = rc*rc;
+		
+		#pragma omp parallel for
+		for (int cell=0; cell<params.no_cells; cell++) {
+			int start_i = cell_start[cell];
+			int end_i = cell_start[cell+1];
+			
+			for (int i = start_i; i<end_i; ++i) {
+				if (type[i] == ParticleType::inflow || type[i] == ParticleType::outflow) continue;
 
-	void add_central_object_forces(){
+				double xi = pos_x[i];
+				double yi = pos_y[i];
+				double vxi = vel_x[i];
+				double vyi = vel_y[i];
+
+				double acc_xi = 0.0;
+				double acc_yi = 0.0;
+				
+				auto [cx, cy] = scalar_index_to_vec(cell);
+			
+				for (auto [dx,dy] : neighbor_offsets) {
+					int ncx = cx + dx;
+					int ncy = cy + dy;
+					
+					if (ncx<0 || ncx>=params.nc[0] || ncy<0 || ncy>=params.nc[1]) continue;
+					
+					int neighbor = vec_to_scalar_index(ncx, ncy);
+					int start_j = cell_start[neighbor];
+					int end_j = cell_start[neighbor+1];
+					
+					for (int j = start_j; j<end_j; ++j) {
+						if (i == j) continue;
+
+						double rel_x = xi-pos_x[j];
+						double rel_y = yi-pos_y[j];
+						double r2 = rel_x*rel_x + rel_y*rel_y;
+						
+						if (r2 < rc2 && r2 > 1e-12) {
+							double r = std::sqrt(r2);
+							double q = std::sqrt(r2 / h2);
+
+							double common = -1*mass[j]*
+							(pressure[i]/(rho[i]*rho[i]) + 
+								pressure[j]/(rho[j]*rho[j]))
+							*deriv_kernel(q)/(h*r);
+
+							acc_xi += common * rel_x;
+							acc_yi += common * rel_y;
+						}
+					}
+				}
+				acc_x[i] = acc_xi;
+				acc_y[i] = acc_yi;
+			}
+		}
+	}
+	}
+	*/
+
+	void compute_central_object_forces(){
 		double Lx = params.Lx;
 		double Ly = params.Ly;
 		double radius = params.central_radius;
@@ -510,6 +578,15 @@ struct ParticleList {
 		}
 	}
 
+	void compute_drag_force(){
+		drag_force = 0.0;
+		for( int i=0; i < no_particles; ++i){
+			if ( type[i] ==  ParticleType::ghost ){
+				drag_force = drag_force + acc_x[i]*mass[i];
+			}
+		}
+	}
+
 	void compute_v_half() {
 		#pragma omp parallel for
 		for (int i=0; i<no_particles; ++i) {
@@ -521,8 +598,10 @@ struct ParticleList {
 	void compute_pos() {
 		#pragma omp parallel for
 		for (int i=0; i<no_particles; ++i) {
-			pos_x[i] += params.dt * vel_x[i];
-			pos_y[i] += params.dt * vel_y[i];
+			if (type[i] != ParticleType::ghost){ //Ghost particles should not move
+				pos_x[i] += params.dt * vel_x[i];
+				pos_y[i] += params.dt * vel_y[i];
+			}
 		}
 	}
 
@@ -535,7 +614,7 @@ struct ParticleList {
 	}
 
 	void print_pos() {
-		std::cout << std::fixed << std::setprecision(10);  // ← Add this
+		std::cout << std::fixed << std::setprecision(10);
 		for (int i=0; i<no_particles; ++i) {
 			std::cout << current_step << "," << pos_x[i] << "," << pos_y[i] << std::endl;
 		}
@@ -553,6 +632,7 @@ struct ParticleList {
 			types_u8[i] = static_cast<uint8_t>(type[i]);
 		}
 		out.write(reinterpret_cast<const char*>(types_u8.data()), sizeof(uint8_t) * N);
+		out.write(reinterpret_cast<const char*>(&drag_force), sizeof(double));
 	}
 
 
@@ -571,11 +651,12 @@ struct ParticleList {
 			manage_inflow_outflow();
 			compart();
 			compute_rho_p();
-			compute_a();
-			add_central_object_forces();
+			compute_pressure_forces();
+			compute_central_object_forces();
 			compute_v_half();
 			compute_pos();
 			periodic();
+			compute_drag_force();
 			
 			compute_v_full();
 			write_frame(out);
