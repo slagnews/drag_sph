@@ -435,7 +435,7 @@ struct ParticleList {
 		}
 	}
 
-	void compute_pressure_forces() {
+	void compute_forces() {
 		std::fill(acc_x.begin(), acc_x.end(), 0);
 		std::fill(acc_y.begin(), acc_y.end(), 0);
 		double h = params.h;
@@ -473,8 +473,8 @@ struct ParticleList {
 
 						double rel_x = xi-pos_x[j];
 						double rel_y = yi-pos_y[j];
-						//double rel_velx = 0.0;
-						//double rel_vely = 0.0;
+						double rel_velx = 0.0;
+						double rel_vely = 0.0;
 						double r2 = rel_x*rel_x + rel_y*rel_y;
 						
 						if (r2 < rc2 && r2 > 1e-12) {
@@ -488,59 +488,9 @@ struct ParticleList {
 
 							acc_xi += common * rel_x;
 							acc_yi += common * rel_y;
+							
 
-						}
-					}
-				}
-				acc_x[i] = acc_xi;
-				acc_y[i] = acc_yi;
-			}
-		}
-	}
-	
-	void compute_viscosity_forces(){
-		double h = params.h;
-		double rc = params.rc;
-		double h2 = h*h;
-		double rc2 = rc*rc;
-		
-		#pragma omp parallel for
-		for (int cell=0; cell<params.no_cells; cell++) {
-			int start_i = cell_start[cell];
-			int end_i = cell_start[cell+1];
-			
-			for (int i = start_i; i<end_i; ++i) {
-				if (type[i] == ParticleType::inflow || type[i] == ParticleType::outflow) continue;
-
-				double xi = pos_x[i];
-				double yi = pos_y[i];
-
-				double acc_xi = 0.0;
-				double acc_yi = 0.0;
-				
-				auto [cx, cy] = scalar_index_to_vec(cell);
-			
-				for (auto [dx,dy] : neighbor_offsets) {
-					int ncx = cx + dx;
-					int ncy = cy + dy;
-					
-					if (ncx<0 || ncx>=params.nc[0] || ncy<0 || ncy>=params.nc[1]) continue;
-					
-					int neighbor = vec_to_scalar_index(ncx, ncy);
-					int start_j = cell_start[neighbor];
-					int end_j = cell_start[neighbor+1];
-					
-					for (int j = start_j; j<end_j; ++j) {
-						if (i == j) continue;
-
-						double rel_x = xi-pos_x[j];
-						double rel_y = yi-pos_y[j];
-						double r2 = rel_x*rel_x + rel_y*rel_y;
-
-						double rel_velx = 0.0;
-						double rel_vely = 0.0;
-						
-						if (r2 < rc2 && r2 > 1e-12) {
+							// Viscosity forces
 							if (type[j] == ParticleType::ghost){
 								// Ghost particles get a no-slip artificial velocity
 								double d_i = std::sqrt((pos_x[i]-params.Lx/2)*(pos_y[i]-params.Ly/2)) - params.central_radius;
@@ -558,51 +508,18 @@ struct ParticleList {
 							double mu_i = params.kinematic_viscosity*rho[i];
 							double mu_j = params.kinematic_viscosity*rho[j];
 
-							double r = std::sqrt(r2);
-							double q = std::sqrt(r2 / h2);
-
-							double common = mass[j]*(mu_i+mu_j)/(2*rho[i]*rho[j])*(
+							double common2 = mass[j]*(mu_i+mu_j)/(2*rho[i]*rho[j])*(
 								2*(1/r*deriv_kernel(q)/h)
 								+ 1/r*(-2/q*deriv_kernel(q)+second_deriv_kernel(q))
 							);
 
-							acc_xi += common * rel_velx;
-							acc_yi += common * rel_vely;
+							acc_xi += common2 * rel_velx;
+							acc_yi += common2 * rel_vely;
 						}
 					}
 				}
-				acc_x[i] += acc_xi;
-				acc_y[i] += acc_yi;
-			}
-		}
-	}
-	
-	
-
-	void compute_central_object_forces(){
-		double Lx = params.Lx;
-		double Ly = params.Ly;
-		double radius = params.central_radius;
-		double width = params.boundary_width;
-		double max_force = params.max_force;
-
-		for (int i = 0; i < no_particles; ++i){
-			double dx = pos_x[i] - Lx/2.0;
-			dx = std::fmod(dx + Lx/2.0, Lx) - Lx/2.0;
-
-			double dy = pos_y[i] - Ly/2.0;
-			dy = std::fmod(dy + Ly/2.0, Ly) - Ly/2.0;
-
-			double distance = std::sqrt(dx*dx + dy*dy);
-
-			if (distance > 1e-8){
-				double nx = dx/distance;
-				double ny = dy/distance;
-				
-				double strength = 1.0/(1.0+std::exp((distance - radius)/width));
-				
-				acc_x[i] += max_force * strength * nx;
-				acc_y[i] += max_force * strength * ny;
+				acc_x[i] = acc_xi;
+				acc_y[i] = acc_yi;
 			}
 		}
 	}
@@ -680,9 +597,7 @@ struct ParticleList {
 			manage_inflow_outflow();
 			compart();
 			compute_rho_p();
-			compute_pressure_forces();
-			compute_viscosity_forces();
-			compute_central_object_forces();
+			compute_forces();
 			compute_v_half();
 			compute_pos();
 			periodic();
