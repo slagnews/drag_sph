@@ -147,6 +147,45 @@ struct ParticleList {
 				++index;
 			}
 		}
+
+				std::vector<bool> should_erase(no_particles, false);
+
+		for (int i=0; i < no_particles; ++i) {
+			if ((pos_x[i]-params.Lx/2)*(pos_x[i]-params.Lx/2) + (pos_y[i]-params.Ly/2)*(pos_y[i]-params.Ly/2) < params.central_radius*params.central_radius) {
+				// Particles inside of the central object should be erased
+				should_erase[i] = true;
+			}
+		}
+
+		int write_index = 0;
+		for (int read_index=0; read_index < no_particles; ++read_index) {
+			if (!should_erase[read_index]) {
+				if (write_index != read_index) {
+					pos_x[write_index] = pos_x[read_index];
+					pos_y[write_index] = pos_y[read_index];
+					vel_x[write_index] = vel_x[read_index];
+					vel_y[write_index] = vel_y[read_index];
+					type[write_index] = type[read_index];
+				}
+				++write_index;
+			}
+		}
+
+		no_particles = write_index; // Update the number of particles
+
+		// Shorten all of the lists by the new number of particles
+		pos_x.resize(no_particles);
+		pos_y.resize(no_particles);
+		vel_x.resize(no_particles);
+		vel_y.resize(no_particles);
+		acc_x.resize(no_particles);
+		acc_y.resize(no_particles);
+		mass.resize(no_particles);
+		rho.resize(no_particles);
+		pressure.resize(no_particles);
+		cell_idx.resize(no_particles);
+		indices.resize(no_particles);
+		type.resize(no_particles);
 	}
 	
 	void init_mass() {
@@ -204,10 +243,6 @@ struct ParticleList {
 			}
 			else if (pos_x[i] < 0.0){
 				// Particles that leave the simulation on the left side should be removed
-				should_erase[i] = true;
-			}
-			else if (pos_x[i] < params.inflow_factor*params.Lx && type[i] != ParticleType::inflow){
-				// Mainflow particles re-entering the inflow should be removed
 				should_erase[i] = true;
 			}
 		}
@@ -531,7 +566,7 @@ struct ParticleList {
 
 	void integrate() {
 		std::ofstream out("all_output.bin", std::ios::binary);
-
+		write_frame(out);
 		for (int step=0; step<params.no_steps; step++) {
 			manage_inflow_outflow();
 			compart();
@@ -552,7 +587,7 @@ struct ParticleList {
 };
 
 
-
+/** 
 int main(int argc, char *argv[]) {
 	if (argc < 16) {
 		std::cerr << "Not enough arguments given" << std::endl;
@@ -589,3 +624,4 @@ int main(int argc, char *argv[]) {
 		
 	return 0;
 }
+*/
