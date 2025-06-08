@@ -157,46 +157,6 @@ struct ParticleList {
 				++index;
 			}
 		}
-		/**
-				std::vector<bool> should_erase(no_particles, false);
-
-		for (int i=0; i < no_particles; ++i) {
-			if ((pos_x[i]-params.Lx/2)*(pos_x[i]-params.Lx/2) + (pos_y[i]-params.Ly/2)*(pos_y[i]-params.Ly/2) < params.central_radius*params.central_radius) {
-				// Particles inside of the central object should be erased
-				should_erase[i] = true;
-			}
-		}
-
-		int write_index = 0;
-		for (int read_index=0; read_index < no_particles; ++read_index) {
-			if (!should_erase[read_index]) {
-				if (write_index != read_index) {
-					pos_x[write_index] = pos_x[read_index];
-					pos_y[write_index] = pos_y[read_index];
-					vel_x[write_index] = vel_x[read_index];
-					vel_y[write_index] = vel_y[read_index];
-					type[write_index] = type[read_index];
-				}
-				++write_index;
-			}
-		}
-
-		no_particles = write_index; // Update the number of particles
-
-		// Shorten all of the lists by the new number of particles
-		pos_x.resize(no_particles);
-		pos_y.resize(no_particles);
-		vel_x.resize(no_particles);
-		vel_y.resize(no_particles);
-		acc_x.resize(no_particles);
-		acc_y.resize(no_particles);
-		mass.resize(no_particles);
-		rho.resize(no_particles);
-		pressure.resize(no_particles);
-		cell_idx.resize(no_particles);
-		indices.resize(no_particles);
-		type.resize(no_particles);
-		 */
 	}
 	
 	void init_mass() {
@@ -412,20 +372,53 @@ struct ParticleList {
 					int ncx = cx + dx;
 					int ncy = cy + dy;
 					
-					if (ncx<0 || ncx>=params.nc[0] || ncy<0 || ncy>=params.nc[1]) continue;
-					
-					int neighbor = vec_to_scalar_index(ncx, ncy);
-					int start_j = cell_start[neighbor];
-					int end_j = cell_start[neighbor+1];
-					
-					for (int j = start_j; j<end_j; ++j) {
-						double rel_x = xi-pos_x[j];
-						double rel_y = yi-pos_y[j];
-						double r2 = rel_x*rel_x + rel_y*rel_y;
+					if (ncx<0 || ncx>=params.nc[0]) continue;
+					if (ncy<0) { //Bottom -> Top
+						int neighbor = vec_to_scalar_index(ncx, ncy+params.nc[1]);
+						int start_j = cell_start[neighbor];
+						int end_j = cell_start[neighbor+1];
 						
-						if (r2 < rc2) {
-							double q = std::sqrt(r2 / h2);
-							rhoi += mass[j] * kernel(q);
+						for (int j = start_j; j<end_j; ++j) {
+							double rel_x = xi-pos_x[j];
+							double rel_y = yi-(pos_y[j]-params.Ly);
+							double r2 = rel_x*rel_x + rel_y*rel_y;
+							
+							if (r2 < rc2) {
+								double q = std::sqrt(r2 / h2);
+								rhoi += mass[j] * kernel(q);
+							}
+						}
+					}
+					else if (ncy>=params.nc[1]) { // Top -> Bottom
+						int neighbor = vec_to_scalar_index(ncx, ncy-params.nc[1]);
+						int start_j = cell_start[neighbor];
+						int end_j = cell_start[neighbor+1];
+						
+						for (int j = start_j; j<end_j; ++j) {
+							double rel_x = xi-pos_x[j];
+							double rel_y = yi-(pos_y[j]-params.Ly);
+							double r2 = rel_x*rel_x + rel_y*rel_y;
+							
+							if (r2 < rc2) {
+								double q = std::sqrt(r2 / h2);
+								rhoi += mass[j] * kernel(q);
+							}
+						}
+					}
+					else { // Normal interactions
+						int neighbor = vec_to_scalar_index(ncx, ncy);
+						int start_j = cell_start[neighbor];
+						int end_j = cell_start[neighbor+1];
+						
+						for (int j = start_j; j<end_j; ++j) {
+							double rel_x = xi-pos_x[j];
+							double rel_y = yi-pos_y[j];
+							double r2 = rel_x*rel_x + rel_y*rel_y;
+							
+							if (r2 < rc2) {
+								double q = std::sqrt(r2 / h2);
+								rhoi += mass[j] * kernel(q);
+							}
 						}
 					}
 				}
@@ -443,7 +436,7 @@ struct ParticleList {
 		double h2 = h*h;
 		double rc2 = rc*rc;
 		
-		#pragma omp parallel for
+		#pragma omp parallel for reduction(+:drag_force)
 		for (int cell=0; cell<params.no_cells; cell++) {
 			int start_i = cell_start[cell];
 			int end_i = cell_start[cell+1];
@@ -462,61 +455,174 @@ struct ParticleList {
 					int ncx = cx + dx;
 					int ncy = cy + dy;
 					
-					if (ncx<0 || ncx>=params.nc[0] || ncy<0 || ncy>=params.nc[1]) continue;
-					
-					int neighbor = vec_to_scalar_index(ncx, ncy);
-					int start_j = cell_start[neighbor];
-					int end_j = cell_start[neighbor+1];
-					
-					for (int j = start_j; j<end_j; ++j) {
-						if (i == j) continue;
-
-						double rel_x = xi-pos_x[j];
-						double rel_y = yi-pos_y[j];
-						double rel_velx = 0.0;
-						double rel_vely = 0.0;
-						double r2 = rel_x*rel_x + rel_y*rel_y;
+					if (ncx<0 || ncx>=params.nc[0]) continue;
+					if (ncy<0) { // Bottom -> Top
+						int neighbor = vec_to_scalar_index(ncx, ncy+params.nc[1]);
+						int start_j = cell_start[neighbor];
+						int end_j = cell_start[neighbor+1];
 						
-						if (r2 < rc2 && r2 > 1e-12) {
-							double r = std::sqrt(r2);
-							double q = std::sqrt(r2 / h2);
+						for (int j = start_j; j<end_j; ++j) {
+							if (i == j) continue;
 
-							double common = -1*mass[j]*
-							(pressure[i]/(rho[i]*rho[i]) + 
-								pressure[j]/(rho[j]*rho[j]))
-							*deriv_kernel(q)/(h*r);
-
-							acc_xi += common * rel_x;
-							acc_yi += common * rel_y;
+							double rel_x = xi-pos_x[j];
+							double rel_y = yi-(pos_y[j]-params.Ly);
+							double rel_velx = 0.0;
+							double rel_vely = 0.0;
+							double r2 = rel_x*rel_x + rel_y*rel_y;
 							
+							if (r2 < rc2 && r2 > 1e-12) {
+								double r = std::sqrt(r2);
+								double q = std::sqrt(r2 / h2);
 
-							// Viscosity forces
-							if (type[j] == ParticleType::ghost){
-								// Ghost particles get a no-slip artificial velocity
-								double d_i = std::sqrt((pos_x[i]-params.Lx/2)*(pos_y[i]-params.Ly/2)) - params.central_radius;
-								double d_j = std::sqrt((pos_x[j]-params.Lx/2)*(pos_y[j]-params.Ly/2)) - params.central_radius;
-								double beta = 1 + d_j/d_i;
-								if ( beta > params.max_beta ) beta = params.max_beta;
-								double rel_velx = beta*vel_x[i];
-								double rel_vely = beta*vel_y[i];
-							} else {
-								// Normal particles just have relative velocities
-								double rel_velx = vel_x[i] - vel_x[j];
-								double rel_vely = vel_y[i] - vel_y[j];
+								double common = -1*mass[j]*
+								(pressure[i]/(rho[i]*rho[i]) + 
+									pressure[j]/(rho[j]*rho[j]))
+								*deriv_kernel(q)/(h*r);
+
+								acc_xi += common * rel_x;
+								acc_yi += common * rel_y;
+								
+
+								// Viscosity forces
+								if (type[j] == ParticleType::ghost){
+									// Ghost particles get a no-slip artificial velocity
+									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2), 2) - params.central_radius;
+									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]-params.Ly)-params.Ly/2), 2) - params.central_radius;
+									double beta = 1 + d_j/d_i;
+									if ( beta > params.max_beta ) beta = params.max_beta;
+									rel_velx = beta*vel_x[i];
+									rel_vely = beta*vel_y[i];
+								} else {
+									// Normal particles just have relative velocities
+									rel_velx = vel_x[i] - vel_x[j];
+									rel_vely = vel_y[i] - vel_y[j];
+								}
+
+								double mu_i = params.kinematic_viscosity*rho[i];
+								double mu_j = params.kinematic_viscosity*rho[j];
+
+								double common2 = mass[j]*(mu_i+mu_j)/(2*rho[i]*rho[j])*(
+									2*(1/r*deriv_kernel(q)/h)
+									+ 1/r*(-2/q*deriv_kernel(q)+second_deriv_kernel(q))
+								);
+
+								acc_xi += common2 * rel_velx;
+								acc_yi += common2 * rel_vely;
 							}
-
-							double mu_i = params.kinematic_viscosity*rho[i];
-							double mu_j = params.kinematic_viscosity*rho[j];
-
-							double common2 = mass[j]*(mu_i+mu_j)/(2*rho[i]*rho[j])*(
-								2*(1/r*deriv_kernel(q)/h)
-								+ 1/r*(-2/q*deriv_kernel(q)+second_deriv_kernel(q))
-							);
-
-							acc_xi += common2 * rel_velx;
-							acc_yi += common2 * rel_vely;
 						}
 					}
+					else if (ncy>=params.nc[1]) { // Top -> Bottom
+						int neighbor = vec_to_scalar_index(ncx, ncy-params.nc[1]);
+						int start_j = cell_start[neighbor];
+						int end_j = cell_start[neighbor+1];
+						
+						for (int j = start_j; j<end_j; ++j) {
+							if (i == j) continue;
+
+							double rel_x = xi-pos_x[j];
+							double rel_y = yi-(pos_y[j]+params.Ly);
+							double rel_velx = 0.0;
+							double rel_vely = 0.0;
+							double r2 = rel_x*rel_x + rel_y*rel_y;
+							
+							if (r2 < rc2 && r2 > 1e-12) {
+								double r = std::sqrt(r2);
+								double q = std::sqrt(r2 / h2);
+
+								double common = -1*mass[j]*
+								(pressure[i]/(rho[i]*rho[i]) + 
+									pressure[j]/(rho[j]*rho[j]))
+								*deriv_kernel(q)/(h*r);
+
+								acc_xi += common * rel_x;
+								acc_yi += common * rel_y;
+								
+
+								// Viscosity forces
+								if (type[j] == ParticleType::ghost){
+									// Ghost particles get a no-slip artificial velocity
+									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2), 2) - params.central_radius;
+									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]+params.Ly)-params.Ly/2), 2) - params.central_radius;
+									double beta = 1 + d_j/d_i;
+									if ( beta > params.max_beta ) beta = params.max_beta;
+									rel_velx = beta*vel_x[i];
+									rel_vely = beta*vel_y[i];
+								} else {
+									// Normal particles just have relative velocities
+									rel_velx = vel_x[i] - vel_x[j];
+									rel_vely = vel_y[i] - vel_y[j];
+								}
+
+								double mu_i = params.kinematic_viscosity*rho[i];
+								double mu_j = params.kinematic_viscosity*rho[j];
+
+								double common2 = mass[j]*(mu_i+mu_j)/(2*rho[i]*rho[j])*(
+									2*(1/r*deriv_kernel(q)/h)
+									+ 1/r*(-2/q*deriv_kernel(q)+second_deriv_kernel(q))
+								);
+
+								acc_xi += common2 * rel_velx;
+								acc_yi += common2 * rel_vely;
+							}
+						}
+					}
+					else { // Normal interactions
+						int neighbor = vec_to_scalar_index(ncx, ncy);
+						int start_j = cell_start[neighbor];
+						int end_j = cell_start[neighbor+1];
+						
+						for (int j = start_j; j<end_j; ++j) {
+							if (i == j) continue;
+
+							double rel_x = xi-pos_x[j];
+							double rel_y = yi-pos_y[j];
+							double rel_velx = 0.0;
+							double rel_vely = 0.0;
+							double r2 = rel_x*rel_x + rel_y*rel_y;
+							
+							if (r2 < rc2 && r2 > 1e-12) {
+								double r = std::sqrt(r2);
+								double q = std::sqrt(r2 / h2);
+
+								double common = -1*mass[j]*
+								(pressure[i]/(rho[i]*rho[i]) + 
+									pressure[j]/(rho[j]*rho[j]))
+								*deriv_kernel(q)/(h*r);
+
+								acc_xi += common * rel_x;
+								acc_yi += common * rel_y;
+								
+
+								// Viscosity forces
+								if (type[j] == ParticleType::ghost){
+									// Ghost particles get a no-slip artificial velocity
+									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2), 2) - params.central_radius;
+									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow(pos_y[j]-params.Ly/2), 2) - params.central_radius;
+									double beta = 1 + d_j/d_i;
+									if ( beta > params.max_beta ) beta = params.max_beta;
+									rel_velx = beta*vel_x[i];
+									rel_vely = beta*vel_y[i];
+								} else {
+									// Normal particles just have relative velocities
+									rel_velx = vel_x[i] - vel_x[j];
+									rel_vely = vel_y[i] - vel_y[j];
+								}
+
+								double mu_i = params.kinematic_viscosity*rho[i];
+								double mu_j = params.kinematic_viscosity*rho[j];
+
+								double common2 = mass[j]*(mu_i+mu_j)/(2*rho[i]*rho[j])*(
+									2*(1/r*deriv_kernel(q)/h)
+									+ 1/r*(-2/q*deriv_kernel(q)+second_deriv_kernel(q))
+								);
+
+								acc_xi += common2 * rel_velx;
+								acc_yi += common2 * rel_vely;
+							}
+						}
+					}
+					
+
 				}
 				acc_x[i] = acc_xi;
 				acc_y[i] = acc_yi;

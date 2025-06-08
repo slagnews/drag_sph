@@ -18,14 +18,15 @@ ext_modules = [
             ".",  # current directory if sph.cpp is here
         ],
         language="c++",
-        extra_compile_args=["-O3", "-std=c++17"],  # Or c++14 if needed
+        extra_compile_args=["-O3", "-fopenmp", "-std=c++17"],  # Or c++14 if needed
+        extra_link_args=["-fopenmp"],
     )
 ]
 
 setup(
     name="sph_cpp",
     version="0.1.0",
-    author="Your Name",
+    author="mlenes_nswinkels",
     description="SPH Simulation Python Binding",
     ext_modules=ext_modules,
     cmdclass={"build_ext": build_ext},
