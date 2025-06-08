@@ -486,15 +486,15 @@ struct ParticleList {
 								// Viscosity forces
 								if (type[j] == ParticleType::ghost){
 									// Ghost particles get a no-slip artificial velocity
-									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2), 2) - params.central_radius;
-									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]-params.Ly)-params.Ly/2), 2) - params.central_radius;
+									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2, 2)) - params.central_radius;
+									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]-params.Ly)-params.Ly/2, 2)) - params.central_radius;
 									double beta = 1 + d_j/d_i;
 									if ( beta > params.max_beta ) beta = params.max_beta;
 									rel_velx = beta*vel_x[i];
 									rel_vely = beta*vel_y[i];
 								} else if ( type[i] == ParticleType::ghost ){
-									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2), 2) - params.central_radius;
-									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]-params.Ly)-params.Ly/2), 2) - params.central_radius;
+									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2, 2)) - params.central_radius;
+									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]-params.Ly)-params.Ly/2, 2)) - params.central_radius;
 									double beta = 1 + d_i/d_j;
 									if ( beta > params.max_beta ) beta = params.max_beta;
 									rel_velx = -beta*vel_x[j];
@@ -548,15 +548,15 @@ struct ParticleList {
 								// Viscosity forces
 								if (type[j] == ParticleType::ghost){
 									// Ghost particles get a no-slip artificial velocity
-									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2), 2) - params.central_radius;
-									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]+params.Ly)-params.Ly/2), 2) - params.central_radius;
+									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2, 2)) - params.central_radius;
+									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]+params.Ly)-params.Ly/2, 2)) - params.central_radius;
 									double beta = 1 + d_j/d_i;
 									if ( beta > params.max_beta ) beta = params.max_beta;
 									rel_velx = beta*vel_x[i];
 									rel_vely = beta*vel_y[i];
 								} else if ( type[i] == ParticleType::ghost ){
-									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2), 2) - params.central_radius;
-									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]-params.Ly)+params.Ly/2), 2) - params.central_radius;
+									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2, 2)) - params.central_radius;
+									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]-params.Ly)+params.Ly/2, 2)) - params.central_radius;
 									double beta = 1 + d_i/d_j;
 									if ( beta > params.max_beta ) beta = params.max_beta;
 									rel_velx = -beta*vel_x[j];
@@ -610,15 +610,15 @@ struct ParticleList {
 								// Viscosity forces
 								if (type[j] == ParticleType::ghost){
 									// Ghost particles get a no-slip artificial velocity
-									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2), 2) - params.central_radius;
-									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow(pos_y[j]-params.Ly/2), 2) - params.central_radius;
+									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2, 2)) - params.central_radius;
+									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow(pos_y[j]-params.Ly/2, 2)) - params.central_radius;
 									double beta = 1 + d_j/d_i;
 									if ( beta > params.max_beta ) beta = params.max_beta;
 									rel_velx = beta*vel_x[i];
 									rel_vely = beta*vel_y[i];
 								} else if ( type[i] == ParticleType::ghost ){
-									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2), 2) - params.central_radius;
-									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow(pos_y[j]-params.Ly), 2) - params.central_radius;
+									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2, 2)) - params.central_radius;
+									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow(pos_y[j]-params.Ly, 2)) - params.central_radius;
 									double beta = 1 + d_i/d_j;
 									if ( beta > params.max_beta ) beta = params.max_beta;
 									rel_velx = -beta*vel_x[j];
@@ -778,3 +778,4 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 */
+
