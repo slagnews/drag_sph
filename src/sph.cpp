@@ -492,6 +492,13 @@ struct ParticleList {
 									if ( beta > params.max_beta ) beta = params.max_beta;
 									rel_velx = beta*vel_x[i];
 									rel_vely = beta*vel_y[i];
+								} else if ( type[i] == ParticleType::ghost ){
+									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2), 2) - params.central_radius;
+									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]-params.Ly)-params.Ly/2), 2) - params.central_radius;
+									double beta = 1 + d_i/d_j;
+									if ( beta > params.max_beta ) beta = params.max_beta;
+									rel_velx = -beta*vel_x[j];
+									rel_vely = -beta*vel_y[j];
 								} else {
 									// Normal particles just have relative velocities
 									rel_velx = vel_x[i] - vel_x[j];
@@ -547,6 +554,13 @@ struct ParticleList {
 									if ( beta > params.max_beta ) beta = params.max_beta;
 									rel_velx = beta*vel_x[i];
 									rel_vely = beta*vel_y[i];
+								} else if ( type[i] == ParticleType::ghost ){
+									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2), 2) - params.central_radius;
+									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]-params.Ly)+params.Ly/2), 2) - params.central_radius;
+									double beta = 1 + d_i/d_j;
+									if ( beta > params.max_beta ) beta = params.max_beta;
+									rel_velx = -beta*vel_x[j];
+									rel_vely = -beta*vel_y[j];
 								} else {
 									// Normal particles just have relative velocities
 									rel_velx = vel_x[i] - vel_x[j];
@@ -602,7 +616,14 @@ struct ParticleList {
 									if ( beta > params.max_beta ) beta = params.max_beta;
 									rel_velx = beta*vel_x[i];
 									rel_vely = beta*vel_y[i];
-								} else {
+								} else if ( type[i] == ParticleType::ghost ){
+									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2), 2) - params.central_radius;
+									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow(pos_y[j]-params.Ly), 2) - params.central_radius;
+									double beta = 1 + d_i/d_j;
+									if ( beta > params.max_beta ) beta = params.max_beta;
+									rel_velx = -beta*vel_x[j];
+									rel_vely = -beta*vel_y[j];
+								}else {
 									// Normal particles just have relative velocities
 									rel_velx = vel_x[i] - vel_x[j];
 									rel_vely = vel_y[i] - vel_y[j];
