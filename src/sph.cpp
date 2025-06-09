@@ -423,6 +423,7 @@ struct ParticleList {
 	void compute_forces() {
 		std::fill(acc_x.begin(), acc_x.end(), 0);
 		std::fill(acc_y.begin(), acc_y.end(), 0);
+		drag_force = 0.0; //Reset drag force for this timestep
 
 		
 		#pragma omp parallel for
@@ -454,6 +455,8 @@ struct ParticleList {
 				update_forces(cell, neighbor, y_offset);
 			}
 		}
+
+		total_drag_force += drag_force;
 	}
 
 	inline void update_forces(int cell, int neighbor, double y_offset) {
@@ -473,9 +476,8 @@ struct ParticleList {
 			double yi = pos_y[i];
 
 			for (int j=start_j; j<end_j; ++j) {
-				if (type[i] == ParticleType::inflow || type[i] == ParticleType::outflow) continue;
-				if (type[i] == ParticleType::ghost && type[j] == ParticleType::ghost) continue;
-				if (i == j) continue;
+				if (type[i] != ParticleType::mainflow) continue; // Only mainflow particles feel forces from other particles
+				if (i == j) continue; // Particles do not interact with themselves
 
 				double xj = pos_x[j];
 				double yj = pos_y[j];
@@ -503,27 +505,17 @@ struct ParticleList {
 					// --------- Viscosity force -----------
 
 
-					if (type[j] == ParticleType::ghost && type[i] == ParticleType::mainflow) {
+					if (type[j] == ParticleType::ghost) {
+						// Ghost particles get a no-slip artificial velocity
 						// Ghost particles get a no-slip artificial velocity
 						double d_i = std::sqrt(pow(xi-params.Lx/2, 2)+pow(yi-params.Ly/2, 2)) - params.central_radius;
-						double d_j = std::sqrt(pow(xj-params.Lx/2, 2)+pow(yj-params.Ly/2, 2)) - params.central_radius;
+						double d_j = params.central_radius - ((xi-params.Lx/2)*(xj-params.Lx/2) + (yi-params.Ly/2)*(yj-params.Ly/2))/std::sqrt(pow(xi-params.Lx/2,2)+pow(yi-params.Ly/2,2));//std::sqrt(pow(xj-params.Lx/2, 2)+pow(yj-params.Ly/2, 2)) - params.central_radius;
 						double beta = 1 + d_j/d_i;
 						if ( beta > params.max_beta ) beta = params.max_beta;
 						if ( beta < 1 ) beta = 1;
 						rel_velx = beta*vel_x[i];
 						rel_vely = beta*vel_y[i];
-					} 
-
-					else if (type[i] == ParticleType::ghost && type[j] == ParticleType::mainflow) {
-						double d_i = std::sqrt(pow(xi-params.Lx/2, 2)+pow(yi-params.Ly/2, 2)) - params.central_radius;
-						double d_j = std::sqrt(pow(xj-params.Lx/2, 2)+pow(yj-params.Ly/2, 2)) - params.central_radius;
-						double beta = 1 + d_i/d_j;
-						if ( beta > params.max_beta ) beta = params.max_beta;
-						if ( beta < 1 ) beta = 1;
-						rel_velx = -beta*vel_x[j];
-						rel_vely = -beta*vel_y[j];
 					}
-
 					else {
 						// Normal particles just have relative velocities
 						rel_velx = vel_x[i] - vel_x[j];
@@ -537,19 +529,12 @@ struct ParticleList {
 
 					acc_x[i] += common2 * rel_velx;
 					acc_y[i] += common2 * rel_vely;
+
+					if (type[j] == ParticleType::ghost){
+						drag_force -= mass[i]*common*rel_x + mass[i]*common2*rel_velx;
+					}
 					// ------------------------------------
 				}
-			}
-		}
-	}
-
-
-	void compute_drag_force(){
-		drag_force = 0.0;
-		for( int i=0; i < no_particles; ++i){
-			if ( type[i] ==  ParticleType::ghost ){
-				drag_force += acc_x[i]*mass[i];
-		total_drag_force += drag_force;
 			}
 		}
 	}
@@ -627,7 +612,6 @@ struct ParticleList {
 			compute_v_half();
 			compute_pos();
 			periodic();
-			compute_drag_force();
 			
 			compute_v_full();
 
