@@ -285,11 +285,11 @@ To ensure the no-slip condition in our simulation, we made use of artificial vel
 ![no_slip](figures/no_slip.png)
 What we do, is we take the velocity of a nearby particle, and extrapolate it over the tangent line touching the circle. Then, the normal distance of a ghost particle to this line is calculated. To ensure that velocities are zero at the boundary, we then take 
 $$v_{ab} = \beta v_a$$
- to calculate the artificial velocity of the ghost particles. The beta here serves as a kind of regulation parameter, where we take 
- $$\beta = min(\beta_{max}, 1+ \frac{d_B}{d_a})$$ 
- We use 
- $$\beta_{max} = 1.5$$
- like the paper.
+to calculate the artificial velocity of the ghost particles. The beta here serves as a kind of regulation parameter, where we take 
+$$\beta = min(\beta_{max}, 1+ \frac{d_B}{d_a})$$ 
+We use 
+$$\beta_{max} = 1.5$$
+like the paper.
 
 ### Drag coefficient
 The drag coefficient can be calculated as such: Everytime we see that a mainflow particle subjects a force into a ghost particle, we mirror the force and add it to the drag force on the cylinder. Now that we have the drag force of the particle, the drag coefficient $C_d$ can be calculated as 
