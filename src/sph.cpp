@@ -66,6 +66,7 @@ struct ParticleList {
 	int no_particles;
 	const SimulationParams& params;
 	double drag_force;
+	double total_drag_force;
 	double max_a;
 	
 	// Particle information vectors
@@ -99,7 +100,8 @@ struct ParticleList {
 		  engine(std::random_device{}()),
 		  init_x_dist(0, p.Lx),
 		  init_y_dist(0, p.Ly),
-		  max_a(0.0) {}
+		  max_a(0.0),
+		  total_drag_force(0.0) {}
 		  
 	// Helper functions
 	std::array<int, 2> get_cell_index(double x, double y) {
@@ -507,6 +509,7 @@ struct ParticleList {
 						double d_j = std::sqrt(pow(xj-params.Lx/2, 2)+pow(yj-params.Ly/2, 2)) - params.central_radius;
 						double beta = 1 + d_j/d_i;
 						if ( beta > params.max_beta ) beta = params.max_beta;
+						if ( beta < 1 ) beta = 1;
 						rel_velx = beta*vel_x[i];
 						rel_vely = beta*vel_y[i];
 					} 
@@ -516,6 +519,7 @@ struct ParticleList {
 						double d_j = std::sqrt(pow(xj-params.Lx/2, 2)+pow(yj-params.Ly/2, 2)) - params.central_radius;
 						double beta = 1 + d_i/d_j;
 						if ( beta > params.max_beta ) beta = params.max_beta;
+						if ( beta < 1 ) beta = 1;
 						rel_velx = -beta*vel_x[j];
 						rel_vely = -beta*vel_y[j];
 					}
@@ -545,6 +549,7 @@ struct ParticleList {
 		for( int i=0; i < no_particles; ++i){
 			if ( type[i] ==  ParticleType::ghost ){
 				drag_force += acc_x[i]*mass[i];
+		total_drag_force += drag_force;
 			}
 		}
 	}
@@ -604,6 +609,10 @@ struct ParticleList {
 				max_a = a;
 			}
 		}
+	}
+
+	double compute_cd() {
+		return (2*total_drag_force/(params.no_steps*params.v0*params.v0*params.rho0*2*params.central_radius));
 	}
 
 	void integrate() {
@@ -669,6 +678,7 @@ int main(int argc, char *argv[]) {
 	pl.integrate();
 
 	std::cout << "Re: " << params.rho0*params.v0*2*params.central_radius/params.kinematic_viscosity << std::endl;
+	std::cout << "Cd: " << pl.compute_cd() << std::endl;
 	std::cout << "CFL (Cs): max dt: " << 0.25*(params.h/params.c_s) << std::endl;
 	std::cout << "CFL (Nu): max dt: " << 0.125*(params.h*params.h/params.kinematic_viscosity) << std::endl;
 	std::cout << "CFL (a): max dt: " << 0.25*std::sqrt(params.h/pl.max_a) << std::endl;
