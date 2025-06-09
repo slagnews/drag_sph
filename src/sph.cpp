@@ -66,6 +66,7 @@ struct ParticleList {
 	int no_particles;
 	const SimulationParams& params;
 	double drag_force;
+	double max_a;
 	
 	// Particle information vectors
 	std::vector<double> pos_x, pos_y, vel_x, vel_y, acc_x, acc_y, mass, rho, pressure;
@@ -97,7 +98,8 @@ struct ParticleList {
 		  cell_start(p.no_cells+1),
 		  engine(std::random_device{}()),
 		  init_x_dist(0, p.Lx),
-		  init_y_dist(0, p.Ly) {}
+		  init_y_dist(0, p.Ly),
+		  max_a(0.0) {}
 		  
 	// Helper functions
 	std::array<int, 2> get_cell_index(double x, double y) {
@@ -595,6 +597,15 @@ struct ParticleList {
 		}
 	}
 
+	void compute_max_a() {
+		for (int i=0; i<no_particles; ++i) {
+			double a = std::sqrt(pow(acc_x[i], 2) + pow(acc_y[i], 2));
+			if (a > max_a) {
+				max_a = a;
+			}
+		}
+	}
+
 	void integrate() {
 		std::ofstream out("all_output.bin", std::ios::binary);
 		write_frame(out);
@@ -610,6 +621,9 @@ struct ParticleList {
 			compute_drag_force();
 			
 			compute_v_full();
+
+			compute_max_a();
+
 			write_frame(out);
 		}
 
@@ -655,6 +669,9 @@ int main(int argc, char *argv[]) {
 	pl.integrate();
 
 	std::cout << "Re: " << params.rho0*params.v0*2*params.central_radius/params.kinematic_viscosity << std::endl;
+	std::cout << "CFL (Cs): max dt: " << 0.25*(params.h/params.c_s) << std::endl;
+	std::cout << "CFL (Nu): max dt: " << 0.125*(params.h*params.h/params.kinematic_viscosity) << std::endl;
+	std::cout << "CFL (a): max dt: " << 0.25*std::sqrt(params.h/pl.max_a) << std::endl;
 
 	return 0;
 }
