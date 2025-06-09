@@ -77,7 +77,7 @@ and secondly by integrating over the density
 $$
 M_2=\int_0^L\int_0^L \rho(\mathbf{r})\mathrm{d}x\mathrm{d}y.
 $$
-For 100 particles, with $L=3$, $h=0.5$ and $m_i=1$ for all particles, this of course results in $M_1=100$. The integration over the density resulted in $M_2=99.45$, which is slightly lower. This is to be expected, since the density only takes into account the density contribution of the nearest image of each particle, but since our kernel is Gaussian and extends infinitely, the images that are further away would still have a tiny contribution. It is also partly due to numerical integration over finitely sized volume elements. So this seems to work properly.
+For 100 particles, with $$L=3$$, $h=0.5$ and $m_i=1$ for all particles, this of course results in $M_1=100$. The integration over the density resulted in $M_2=99.45$, which is slightly lower. This is to be expected, since the density only takes into account the density contribution of the nearest image of each particle, but since our kernel is Gaussian and extends infinitely, the images that are further away would still have a tiny contribution. It is also partly due to numerical integration over finitely sized volume elements. So this seems to work properly.
 
 ### Drag on an object
 As a first test of the simulation, we initialized 1000 particles on a 10x10 simulation space with randomly initialized velocities (normally distributed around 0 with an std of `v_random=1`). By giving them an additional `v0=10` velocity in the positive x-direction, the fluid starts to flow to the right.
