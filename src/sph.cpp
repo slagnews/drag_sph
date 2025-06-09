@@ -570,6 +570,8 @@ struct ParticleList {
 		out.write(reinterpret_cast<const char*>(&N), sizeof(int));
 		out.write(reinterpret_cast<const char*>(pos_x.data()), sizeof(double) * N);
 		out.write(reinterpret_cast<const char*>(pos_y.data()), sizeof(double) * N);
+        out.write(reinterpret_cast<const char*>(vel_x.data()), sizeof(double) * N);
+		out.write(reinterpret_cast<const char*>(vel_y.data()), sizeof(double) * N);
 		std::vector<uint8_t> types_u8(N);
 		for (int i = 0; i < N; ++i) {
 			types_u8[i] = static_cast<uint8_t>(type[i]);
