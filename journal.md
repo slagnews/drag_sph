@@ -276,7 +276,7 @@ $$
 \Sigma_b \frac{m_b(\mu_a + \mu_b)v_{ab}}{\rho_a \rho_b} (\frac{1}{r_{ab}}\frac{\partial W}{\partial r_{a}})
 $$
 
-where  v_{ab} denotes the relative velocity.
+where  v_ab denotes the relative velocity.
 
 ### Ghost particles
 The last kind of particles that we have are called ghost particles, they are what comprises that central cylinder in the simulation. At initialization we take a disk of particles in the middle of the field and call them ghost particles. These particles do not move, but are otherwise evolved through the same equations as the rest of the particles. 
