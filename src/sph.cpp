@@ -64,7 +64,6 @@ enum ParticleType {
 struct ParticleList {
 	// Particle information
 	int no_particles;
-	int current_step;
 	const SimulationParams& params;
 	double drag_force;
 	
@@ -129,13 +128,6 @@ struct ParticleList {
 		else return -5*params.sigma*(pow(3.0-q,4) - 6*pow(2.0-q,4) + 15*pow(1.0-q,4));
 	}
 
-	inline double second_deriv_kernel(double q){
-		if (q >= 3.0) return 0.0;
-		else if (q >= 2.0) return 20*params.sigma*pow(3.0-q,3);
-		else if (q >= 1.0) return 20*params.sigma*(pow(3.0-q,3) - 6*pow(2.0-q,3));
-		else return 20*params.sigma*(pow(3.0-q,3) - 6*pow(2.0-q,3) + 15*pow(1.0-q,3));
-	}
-	
 	inline double calculate_pressure(double rho) {
 		return params.P0 + params.c_s*params.c_s*(rho-params.rho0);//params.B*(pow(rho/params.rho0, params.gamma_index)-1);
 	}
@@ -150,7 +142,7 @@ struct ParticleList {
 	
 	void init_grid() {
 		int index = 0;
-		for (int i=0; i<params.Nx; ++i) {
+		for (int i=1; i<params.Nx; ++i) {
 			for (int j=0; j<params.Ny; ++j) {
 				pos_x[index] = i*params.res;
 				pos_y[index] = j*params.res;
@@ -349,313 +341,205 @@ struct ParticleList {
 		type = std::move(new_type);
 	}
 	
-	void compute_rho_p() {
+	void compute_rho() {
 		std::fill(rho.begin(), rho.end(), 0);
+
+		#pragma omp parallel for
+		for (int cell=0; cell<params.no_cells; cell++) {
+
+			auto [cx, cy] = scalar_index_to_vec(cell);
+
+			for (auto [dx,dy] : neighbor_offsets) {
+				int ncx = cx + dx;
+				int ncy = cy + dy;
+
+				double y_offset = 0.0;
+				int neighbor;
+				if (ncx<0 || ncx>=params.nc[0]) continue;
+
+				if (ncy<0) { // Bottom -> Top
+					neighbor = vec_to_scalar_index(ncx, ncy+params.nc[1]);
+					y_offset = -params.Ly;
+				}
+
+				else if (ncy>=params.nc[1]) { // Top -> Bottom
+					neighbor = vec_to_scalar_index(ncx, ncy-params.nc[1]);
+					y_offset = params.Ly;
+				}
+
+				else { // Base
+					neighbor = vec_to_scalar_index(ncx, ncy);
+				}
+
+				update_rho(cell, neighbor, y_offset);
+			}
+		}
+	}
+
+	inline void update_rho(int cell, int neighbor, double y_offset) {
 		double h = params.h;
 		double rc = params.rc;
 		double h2 = h*h;
 		double rc2 = rc*rc;
 
-		#pragma omp parallel for
-		for (int cell=0; cell<params.no_cells; cell++) {
-			int start_i = cell_start[cell];
-			int end_i = cell_start[cell+1];
-			
-			for (int i = start_i; i<end_i; ++i) {
-				double xi = pos_x[i];
-				double yi = pos_y[i];
-				double rhoi = 0.0;
-				
-				auto [cx, cy] = scalar_index_to_vec(cell);
-			
-				for (auto [dx,dy] : neighbor_offsets) {
-					int ncx = cx + dx;
-					int ncy = cy + dy;
-					
-					if (ncx<0 || ncx>=params.nc[0]) continue;
-					if (ncy<0) { //Bottom -> Top
-						int neighbor = vec_to_scalar_index(ncx, ncy+params.nc[1]);
-						int start_j = cell_start[neighbor];
-						int end_j = cell_start[neighbor+1];
-						
-						for (int j = start_j; j<end_j; ++j) {
-							double rel_x = xi-pos_x[j];
-							double rel_y = yi-(pos_y[j]-params.Ly);
-							double r2 = rel_x*rel_x + rel_y*rel_y;
-							
-							if (r2 < rc2) {
-								double q = std::sqrt(r2 / h2);
-								rhoi += mass[j] * kernel(q);
-							}
-						}
-					}
-					else if (ncy>=params.nc[1]) { // Top -> Bottom
-						int neighbor = vec_to_scalar_index(ncx, ncy-params.nc[1]);
-						int start_j = cell_start[neighbor];
-						int end_j = cell_start[neighbor+1];
-						
-						for (int j = start_j; j<end_j; ++j) {
-							double rel_x = xi-pos_x[j];
-							double rel_y = yi-(pos_y[j]-params.Ly);
-							double r2 = rel_x*rel_x + rel_y*rel_y;
-							
-							if (r2 < rc2) {
-								double q = std::sqrt(r2 / h2);
-								rhoi += mass[j] * kernel(q);
-							}
-						}
-					}
-					else { // Normal interactions
-						int neighbor = vec_to_scalar_index(ncx, ncy);
-						int start_j = cell_start[neighbor];
-						int end_j = cell_start[neighbor+1];
-						
-						for (int j = start_j; j<end_j; ++j) {
-							double rel_x = xi-pos_x[j];
-							double rel_y = yi-pos_y[j];
-							double r2 = rel_x*rel_x + rel_y*rel_y;
-							
-							if (r2 < rc2) {
-								double q = std::sqrt(r2 / h2);
-								rhoi += mass[j] * kernel(q);
-							}
-						}
-					}
+		int start_i = cell_start[cell];
+		int end_i = cell_start[cell+1];
+
+		int start_j = cell_start[neighbor];
+		int end_j = cell_start[neighbor+1];
+
+		for (int i=start_i; i<end_i; ++i) {
+			double xi = pos_x[i];
+			double yi = pos_y[i];
+
+			double rhoi = 0.0;
+
+			for (int j=start_j; j<end_j; ++j) {
+				double xj = pos_x[j];
+				double yj = pos_y[j]+y_offset;
+
+				double rel_x = xi - xj;
+				double rel_y = yi - yj;
+				double r2 = rel_x*rel_x + rel_y*rel_y;
+				if (r2 < rc2) {
+					double q = std::sqrt(r2/h2);
+					rho[i] += mass[j] * kernel(q);
 				}
-				rho[i] = rhoi;
-				pressure[i] = calculate_pressure(rhoi);
 			}
+		}
+	}
+
+	void compute_p() {
+		#pragma omp parallel for
+		for (int i=0; i<no_particles; ++i) {
+			pressure[i] = calculate_pressure(rho[i]);
 		}
 	}
 
 	void compute_forces() {
 		std::fill(acc_x.begin(), acc_x.end(), 0);
 		std::fill(acc_y.begin(), acc_y.end(), 0);
+
+		
+		#pragma omp parallel for
+		for (int cell=0; cell<params.no_cells; cell++) {
+			auto [cx, cy] = scalar_index_to_vec(cell);
+
+			for (auto [dx,dy] : neighbor_offsets) {
+				int ncx = cx + dx;
+				int ncy = cy + dy;
+
+				double y_offset = 0.0;
+				int neighbor;
+				if (ncx<0 || ncx>=params.nc[0]) continue;
+
+				if (ncy<0) { // Bottom -> Top
+					neighbor = vec_to_scalar_index(ncx, ncy+params.nc[1]);
+					y_offset = -params.Ly;
+				}
+
+				else if (ncy>=params.nc[1]) { // Top -> Bottom
+					neighbor = vec_to_scalar_index(ncx, ncy-params.nc[1]);
+					y_offset = params.Ly;
+				}
+
+				else { // Base
+					neighbor = vec_to_scalar_index(ncx, ncy);
+				}
+
+				update_forces(cell, neighbor, y_offset);
+			}
+		}
+	}
+
+	inline void update_forces(int cell, int neighbor, double y_offset) {
 		double h = params.h;
 		double rc = params.rc;
 		double h2 = h*h;
 		double rc2 = rc*rc;
-		
-		#pragma omp parallel for reduction(+:drag_force)
-		for (int cell=0; cell<params.no_cells; cell++) {
-			int start_i = cell_start[cell];
-			int end_i = cell_start[cell+1];
-			
-			for (int i = start_i; i<end_i; ++i) {
+
+		int start_i = cell_start[cell];
+		int end_i = cell_start[cell+1];
+
+		int start_j = cell_start[neighbor];
+		int end_j = cell_start[neighbor+1];
+
+		for (int i=start_i; i<end_i; ++i) {
+			double xi = pos_x[i];
+			double yi = pos_y[i];
+
+			for (int j=start_j; j<end_j; ++j) {
 				if (type[i] == ParticleType::inflow || type[i] == ParticleType::outflow) continue;
+				if (i == j) continue;
 
-				double xi = pos_x[i];
-				double yi = pos_y[i];
-				double acc_xi = 0.0;
-				double acc_yi = 0.0;
+				double xj = pos_x[j];
+				double yj = pos_y[j];
+
+				double rel_x = xi-xj;
+				double rel_y = yi-yj;
+				double rel_velx = 0.0;
+				double rel_vely = 0.0;
+				double r2 = rel_x*rel_x + rel_y*rel_y;
 				
-				auto [cx, cy] = scalar_index_to_vec(cell);
-			
-				for (auto [dx,dy] : neighbor_offsets) {
-					int ncx = cx + dx;
-					int ncy = cy + dy;
-					
-					if (ncx<0 || ncx>=params.nc[0]) continue;
-					if (ncy<0) { // Bottom -> Top
-						int neighbor = vec_to_scalar_index(ncx, ncy+params.nc[1]);
-						int start_j = cell_start[neighbor];
-						int end_j = cell_start[neighbor+1];
-						
-						for (int j = start_j; j<end_j; ++j) {
-							if (i == j) continue;
+				if (r2 < rc2 && r2 > 1e-12) {
+					// --------- Pressure Force -----------
+					double r = std::sqrt(r2);
+					double q = std::sqrt(r2 / h2);
 
-							double rel_x = xi-pos_x[j];
-							double rel_y = yi-(pos_y[j]-params.Ly);
-							double rel_velx = 0.0;
-							double rel_vely = 0.0;
-							double r2 = rel_x*rel_x + rel_y*rel_y;
-							
-							if (r2 < rc2 && r2 > 1e-12) {
-								double r = std::sqrt(r2);
-								double q = std::sqrt(r2 / h2);
+					double common = -1*mass[j]*
+					(pressure[i]/(rho[i]*rho[i]) + 
+						pressure[j]/(rho[j]*rho[j]))
+					*deriv_kernel(q)/(h*r);
 
-								double common = -1*mass[j]*
-								(pressure[i]/(rho[i]*rho[i]) + 
-									pressure[j]/(rho[j]*rho[j]))
-								*deriv_kernel(q)/(h*r);
+					acc_x[i] += common * rel_x;
+					acc_y[i] += common * rel_y;
+					// -------------------------------------
 
-								acc_xi += common * rel_x;
-								acc_yi += common * rel_y;
-								
+					// --------- Viscosity force -----------
+					if (type[j] == ParticleType::ghost && type[i] == ParticleType::mainflow) {
+						// Ghost particles get a no-slip artificial velocity
+						double d_i = std::sqrt(pow(xi-params.Lx/2, 2)+pow(yi-params.Ly/2, 2)) - params.central_radius;
+						double d_j = std::sqrt(pow(xj-params.Lx/2, 2)+pow(yj-params.Ly/2, 2)) - params.central_radius;
+						double beta = 1 + d_j/d_i;
+						if ( beta > params.max_beta ) beta = params.max_beta;
+						rel_velx = beta*vel_x[i];
+						rel_vely = beta*vel_y[i];
+					} 
 
-								// Viscosity forces
-								if (type[j] == ParticleType::ghost){
-									// Ghost particles get a no-slip artificial velocity
-									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2, 2)) - params.central_radius;
-									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]-params.Ly)-params.Ly/2, 2)) - params.central_radius;
-									double beta = 1 + d_j/d_i;
-									if ( beta > params.max_beta ) beta = params.max_beta;
-									rel_velx = beta*vel_x[i];
-									rel_vely = beta*vel_y[i];
-								} else if ( type[i] == ParticleType::ghost ){
-									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2, 2)) - params.central_radius;
-									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]-params.Ly)-params.Ly/2, 2)) - params.central_radius;
-									double beta = 1 + d_i/d_j;
-									if ( beta > params.max_beta ) beta = params.max_beta;
-									rel_velx = -beta*vel_x[j];
-									rel_vely = -beta*vel_y[j];
-								} else {
-									// Normal particles just have relative velocities
-									rel_velx = vel_x[i] - vel_x[j];
-									rel_vely = vel_y[i] - vel_y[j];
-								}
-
-								double mu_i = params.kinematic_viscosity*rho[i];
-								double mu_j = params.kinematic_viscosity*rho[j];
-
-								double common2 = mass[j]*(mu_i+mu_j)/(2*rho[i]*rho[j])*(
-									2*(1/r*deriv_kernel(q)/h)
-									+ 1/r*(-2/q*deriv_kernel(q)+second_deriv_kernel(q))
-								);
-
-								acc_xi += common2 * rel_velx;
-								acc_yi += common2 * rel_vely;
-							}
-						}
+					else if (type[i] == ParticleType::ghost && type[j] == ParticleType::mainflow) {
+						double d_i = std::sqrt(pow(xi-params.Lx/2, 2)+pow(yi-params.Ly/2, 2)) - params.central_radius;
+						double d_j = std::sqrt(pow(xj-params.Lx/2, 2)+pow(yj-params.Ly/2, 2)) - params.central_radius;
+						double beta = 1 + d_i/d_j;
+						if ( beta > params.max_beta ) beta = params.max_beta;
+						rel_velx = -beta*vel_x[j];
+						rel_vely = -beta*vel_y[j];
 					}
-					else if (ncy>=params.nc[1]) { // Top -> Bottom
-						int neighbor = vec_to_scalar_index(ncx, ncy-params.nc[1]);
-						int start_j = cell_start[neighbor];
-						int end_j = cell_start[neighbor+1];
-						
-						for (int j = start_j; j<end_j; ++j) {
-							if (i == j) continue;
 
-							double rel_x = xi-pos_x[j];
-							double rel_y = yi-(pos_y[j]+params.Ly);
-							double rel_velx = 0.0;
-							double rel_vely = 0.0;
-							double r2 = rel_x*rel_x + rel_y*rel_y;
-							
-							if (r2 < rc2 && r2 > 1e-12) {
-								double r = std::sqrt(r2);
-								double q = std::sqrt(r2 / h2);
-
-								double common = -1*mass[j]*
-								(pressure[i]/(rho[i]*rho[i]) + 
-									pressure[j]/(rho[j]*rho[j]))
-								*deriv_kernel(q)/(h*r);
-
-								acc_xi += common * rel_x;
-								acc_yi += common * rel_y;
-								
-
-								// Viscosity forces
-								if (type[j] == ParticleType::ghost){
-									// Ghost particles get a no-slip artificial velocity
-									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2, 2)) - params.central_radius;
-									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]+params.Ly)-params.Ly/2, 2)) - params.central_radius;
-									double beta = 1 + d_j/d_i;
-									if ( beta > params.max_beta ) beta = params.max_beta;
-									rel_velx = beta*vel_x[i];
-									rel_vely = beta*vel_y[i];
-								} else if ( type[i] == ParticleType::ghost ){
-									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2, 2)) - params.central_radius;
-									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow((pos_y[j]-params.Ly)+params.Ly/2, 2)) - params.central_radius;
-									double beta = 1 + d_i/d_j;
-									if ( beta > params.max_beta ) beta = params.max_beta;
-									rel_velx = -beta*vel_x[j];
-									rel_vely = -beta*vel_y[j];
-								} else {
-									// Normal particles just have relative velocities
-									rel_velx = vel_x[i] - vel_x[j];
-									rel_vely = vel_y[i] - vel_y[j];
-								}
-
-								double mu_i = params.kinematic_viscosity*rho[i];
-								double mu_j = params.kinematic_viscosity*rho[j];
-
-								double common2 = mass[j]*(mu_i+mu_j)/(2*rho[i]*rho[j])*(
-									2*(1/r*deriv_kernel(q)/h)
-									+ 1/r*(-2/q*deriv_kernel(q)+second_deriv_kernel(q))
-								);
-
-								acc_xi += common2 * rel_velx;
-								acc_yi += common2 * rel_vely;
-							}
-						}
+					else {
+						// Normal particles just have relative velocities
+						rel_velx = vel_x[i] - vel_x[j];
+						rel_vely = vel_y[i] - vel_y[j];
 					}
-					else { // Normal interactions
-						int neighbor = vec_to_scalar_index(ncx, ncy);
-						int start_j = cell_start[neighbor];
-						int end_j = cell_start[neighbor+1];
-						
-						for (int j = start_j; j<end_j; ++j) {
-							if (i == j) continue;
 
-							double rel_x = xi-pos_x[j];
-							double rel_y = yi-pos_y[j];
-							double rel_velx = 0.0;
-							double rel_vely = 0.0;
-							double r2 = rel_x*rel_x + rel_y*rel_y;
-							
-							if (r2 < rc2 && r2 > 1e-12) {
-								double r = std::sqrt(r2);
-								double q = std::sqrt(r2 / h2);
+					double mu_i = params.kinematic_viscosity*rho[i];
+					double mu_j = params.kinematic_viscosity*rho[j];
 
-								double common = -1*mass[j]*
-								(pressure[i]/(rho[i]*rho[i]) + 
-									pressure[j]/(rho[j]*rho[j]))
-								*deriv_kernel(q)/(h*r);
+					double common2 = mass[j]*(mu_i+mu_j)/(rho[i]*rho[j])*(deriv_kernel(q)/r);
 
-								acc_xi += common * rel_x;
-								acc_yi += common * rel_y;
-								
-
-								// Viscosity forces
-								if (type[j] == ParticleType::ghost){
-									// Ghost particles get a no-slip artificial velocity
-									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2, 2)) - params.central_radius;
-									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow(pos_y[j]-params.Ly/2, 2)) - params.central_radius;
-									double beta = 1 + d_j/d_i;
-									if ( beta > params.max_beta ) beta = params.max_beta;
-									rel_velx = beta*vel_x[i];
-									rel_vely = beta*vel_y[i];
-								} else if ( type[i] == ParticleType::ghost ){
-									double d_i = std::sqrt(pow(pos_x[i]-params.Lx/2, 2)+pow(pos_y[i]-params.Ly/2, 2)) - params.central_radius;
-									double d_j = std::sqrt(pow(pos_x[j]-params.Lx/2, 2)+pow(pos_y[j]-params.Ly, 2)) - params.central_radius;
-									double beta = 1 + d_i/d_j;
-									if ( beta > params.max_beta ) beta = params.max_beta;
-									rel_velx = -beta*vel_x[j];
-									rel_vely = -beta*vel_y[j];
-								}else {
-									// Normal particles just have relative velocities
-									rel_velx = vel_x[i] - vel_x[j];
-									rel_vely = vel_y[i] - vel_y[j];
-								}
-
-								double mu_i = params.kinematic_viscosity*rho[i];
-								double mu_j = params.kinematic_viscosity*rho[j];
-
-								double common2 = mass[j]*(mu_i+mu_j)/(2*rho[i]*rho[j])*(
-									2*(1/r*deriv_kernel(q)/h)
-									+ 1/r*(-2/q*deriv_kernel(q)+second_deriv_kernel(q))
-								);
-
-								acc_xi += common2 * rel_velx;
-								acc_yi += common2 * rel_vely;
-							}
-						}
-					}
-					
-
+					acc_x[i] += common2 * rel_velx;
+					acc_y[i] += common2 * rel_vely;
+					// ------------------------------------
 				}
-				acc_x[i] = acc_xi;
-				acc_y[i] = acc_yi;
 			}
 		}
 	}
+
 
 	void compute_drag_force(){
 		drag_force = 0.0;
 		for( int i=0; i < no_particles; ++i){
 			if ( type[i] ==  ParticleType::ghost ){
-				drag_force = drag_force + acc_x[i]*mass[i];
+				drag_force += acc_x[i]*mass[i];
 			}
 		}
 	}
@@ -686,20 +570,11 @@ struct ParticleList {
 		}
 	}
 
-	void print_pos() {
-		std::cout << std::fixed << std::setprecision(10);
-		for (int i=0; i<no_particles; ++i) {
-			std::cout << current_step << "," << pos_x[i] << "," << pos_y[i] << std::endl;
-		}
-	}
-
 	void write_frame(std::ofstream& out) {
 		int N = pos_x.size();
 		out.write(reinterpret_cast<const char*>(&N), sizeof(int));
 		out.write(reinterpret_cast<const char*>(pos_x.data()), sizeof(double) * N);
 		out.write(reinterpret_cast<const char*>(pos_y.data()), sizeof(double) * N);
-		out.write(reinterpret_cast<const char*>(vel_x.data()), sizeof(double) * N);
-		out.write(reinterpret_cast<const char*>(vel_y.data()), sizeof(double) * N);
 		std::vector<uint8_t> types_u8(N);
 		for (int i = 0; i < N; ++i) {
 			types_u8[i] = static_cast<uint8_t>(type[i]);
@@ -723,7 +598,8 @@ struct ParticleList {
 		for (int step=0; step<params.no_steps; step++) {
 			manage_inflow_outflow();
 			compart();
-			compute_rho_p();
+			compute_rho();
+			compute_p();
 			compute_forces();
 			compute_v_half();
 			compute_pos();
@@ -732,21 +608,20 @@ struct ParticleList {
 			
 			compute_v_full();
 			write_frame(out);
-			current_step += 1;
 		}
 
-		//out.close();
+		out.close();
 	}
 };
 
 
-/** 
 int main(int argc, char *argv[]) {
-	if (argc < 16) {
+
+	if (argc < 18) {
 		std::cerr << "Not enough arguments given" << std::endl;
 		return 1;
 	}
-	
+
 	SimulationParams params(
 		atof(argv[1]), // res
 		atoi(argv[2]), // no_steps
@@ -762,20 +637,22 @@ int main(int argc, char *argv[]) {
 		atof(argv[12]), // boundary_width
 		atof(argv[13]),  // max_force
 		atof(argv[14]),	// inflow_factor
-		atof(argv[15]) //outflow_factor
+		atof(argv[15]), // outflow_factor
+		atof(argv[16]), // kinematic viscosity
+		atof(argv[17]) // max_beta
 	);
-	
+
 	ParticleList pl(params);
-	
+
 	pl.init_grid();
-	pl.init_type();
 	pl.init_mass();
 	pl.init_vel();
+	pl.init_type();
 
 	pl.integrate();
-	std::cout << pl.no_particles << std::endl;
-		
+
+	std::cout << "Re: " << params.rho0*params.v0*2*params.central_radius/params.kinematic_viscosity << std::endl;
+
 	return 0;
 }
-*/
 

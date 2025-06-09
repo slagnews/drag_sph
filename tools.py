@@ -1,38 +1,81 @@
+import struct
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
 def read_all_output(filename):
     positions = []
-    velocities = []
     types_all = []
     drag_forces = []
 
     with open(filename, "rb") as f:
         while True:
-            int_bytes = f.read(4)
-            if not int_bytes:
+            n_bytes = f.read(4)  # int N
+            if not n_bytes:
                 break
-            N = struct.unpack("i", int_bytes)[0]
-
-            x = np.frombuffer(f.read(8 * N), dtype=np.float64)
-            y = np.frombuffer(f.read(8 * N), dtype=np.float64)
-            vx = np.frombuffer(f.read(8 * N), dtype=np.float64)
-            vy = np.frombuffer(f.read(8 * N), dtype=np.float64)
-            types = np.frombuffer(f.read(N), dtype=np.uint8)
-
-            if any(len(arr) < N for arr in [x, y, vx, vy, types]):
-                print("Warning: Incomplete frame at end of file")
+            if len(n_bytes) < 4:
+                print("Warning: incomplete N")
                 break
+            N = struct.unpack('i', n_bytes)[0]
 
-            drag_force_bytes = f.read(8)
-            if len(drag_force_bytes) < 8:
-                print("Warning: Missing drag_force at end of file")
+            x_bytes = f.read(8 * N)
+            if len(x_bytes) < 8 * N:
+                print("Warning: incomplete pos_x")
                 break
-            drag_force = struct.unpack("d", drag_force_bytes)[0]
+            x = np.frombuffer(x_bytes, dtype=np.float64)
+
+            y_bytes = f.read(8 * N)
+            if len(y_bytes) < 8 * N:
+                print("Warning: incomplete pos_y")
+                break
+            y = np.frombuffer(y_bytes, dtype=np.float64)
+
+            types_bytes = f.read(N)  # uint8_t types, 1 byte each
+            if len(types_bytes) < N:
+                print("Warning: incomplete types")
+                break
+            types = np.frombuffer(types_bytes, dtype=np.uint8)
+
+            drag_bytes = f.read(8)  # single double drag_force
+            if len(drag_bytes) < 8:
+                print("Warning: incomplete drag_force")
+                break
+            drag_force = struct.unpack('d', drag_bytes)[0]
 
             pos = np.stack((x, y), axis=1)
-            vel = np.stack((vx, vy), axis=1)
 
             positions.append(pos)
-            velocities.append(vel)
             types_all.append(types)
             drag_forces.append(drag_force)
 
-    return positions, velocities, types_all, drag_forces
+    return positions, types_all, drag_forces
+
+def animate_types(positions, types, interval=100):
+    fig, ax = plt.subplots()
+
+    # Plot particles
+    inflow_particles, = ax.plot(positions[0][:,0][types[0]==0.0], positions[0][:,1][types[0]==0.0], linestyle="None", marker=".", color="C0")
+    mainflow_particles, = ax.plot(positions[0][:,0][types[0]==2.0], positions[0][:,1][types[0]==2.0], linestyle="None", marker=".", color="C1")
+    outflow_particles, = ax.plot(positions[0][:,0][types[0]==1.0], positions[0][:,1][types[0]==1.0], linestyle="None", marker=".", color="C2")
+    ghost_particles, = ax.plot(positions[0][:,0][types[0]==3.0], positions[0][:,1][types[0]==3.0], linestyle="None", marker=".", color="black")
+
+    def update(frame):
+        inflow_particles.set_xdata(positions[frame][:,0][types[frame]==0.0])
+        inflow_particles.set_ydata(positions[frame][:,1][types[frame]==0.0])
+
+        mainflow_particles.set_xdata(positions[frame][:,0][types[frame]==2.0])
+        mainflow_particles.set_ydata(positions[frame][:,1][types[frame]==2.0])
+
+        outflow_particles.set_xdata(positions[frame][:,0][types[frame]==1.0])
+        outflow_particles.set_ydata(positions[frame][:,1][types[frame]==1.0])
+
+        ghost_particles.set_xdata(positions[frame][:,0][types[frame]==3.0])
+        ghost_particles.set_ydata(positions[frame][:,1][types[frame]==3.0])
+
+        print(f"Frame {frame+1} done", end="\r")
+
+        return inflow_particles, mainflow_particles, outflow_particles, ghost_particles
+
+    anim = animation.FuncAnimation(fig, update, frames=len(positions), interval=interval)
+    return anim
+
