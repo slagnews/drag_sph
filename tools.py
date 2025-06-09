@@ -5,6 +5,7 @@ import matplotlib.animation as animation
 
 def read_all_output(filename):
     positions = []
+    velocities = []
     types_all = []
     drag_forces = []
 
@@ -30,6 +31,18 @@ def read_all_output(filename):
                 break
             y = np.frombuffer(y_bytes, dtype=np.float64)
 
+            vx_bytes = f.read(8 * N)
+            if len(vx_bytes) < 8 * N:
+                print("Warning: incomplete pos_x")
+                break
+            vx = np.frombuffer(vx_bytes, dtype=np.float64)
+
+            vy_bytes = f.read(8 * N)
+            if len(vy_bytes) < 8 * N:
+                print("Warning: incomplete pos_y")
+                break
+            vy = np.frombuffer(vy_bytes, dtype=np.float64)
+
             types_bytes = f.read(N)  # uint8_t types, 1 byte each
             if len(types_bytes) < N:
                 print("Warning: incomplete types")
@@ -40,18 +53,24 @@ def read_all_output(filename):
             if len(drag_bytes) < 8:
                 print("Warning: incomplete drag_force")
                 break
-            drag_force = struct.unpack('d', drag_bytes)[0]
+            drag_force = struct.unpack('<d', drag_bytes)[0]
 
             pos = np.stack((x, y), axis=1)
+            vel = np.stack((vx,vy), axis=1)
 
             positions.append(pos)
+            velocities.append(vel)
             types_all.append(types)
             drag_forces.append(drag_force)
 
-    return positions, types_all, drag_forces
+    return positions, velocities, types_all, drag_forces
 
 def animate_types(positions, types, interval=100):
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots()#figsize=(25,20))
+    ax.set_aspect("equal")
+
+    ax.set_xlabel("$x$ (m)")
+    ax.set_ylabel("$y$ (m)")
 
     # Plot particles
     inflow_particles, = ax.plot(positions[0][:,0][types[0]==0.0], positions[0][:,1][types[0]==0.0], linestyle="None", marker=".", color="C0")
@@ -79,3 +98,36 @@ def animate_types(positions, types, interval=100):
     anim = animation.FuncAnimation(fig, update, frames=len(positions), interval=interval)
     return anim
 
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib import animation
+
+def animate_velocities(positions, velocities, interval=100, Lx=5, Ly=5, s=5):
+    speeds = np.sqrt(velocities[0][:,0]**2 + velocities[0][:,1]**2)
+    fig, ax = plt.subplots()
+    ax.set_aspect("equal")
+
+    ax.set_xlim(0,Lx)
+    ax.set_ylim(0,Ly)
+
+    ax.set_xlabel("$x$ (m)")
+    ax.set_ylabel("$y$ (m)")
+
+    scatter = ax.scatter(
+        positions[0][:, 0], positions[0][:, 1],
+        c=speeds,
+        cmap='viridis',
+        s=s
+    )
+    cbar = fig.colorbar(scatter, ax=ax)
+    cbar.set_label('$|\\mathbf{v}|$ (m/s)')
+
+    def update(frame):
+        speeds = np.sqrt(velocities[frame][:,0]**2 + velocities[frame][:,1]**2)
+        scatter.set_offsets(positions[frame])
+        scatter.set_array(speeds)  # Update color values
+        print(f"Frame {frame+1} done", end="\r")
+        return scatter,
+
+    anim = animation.FuncAnimation(fig, update, frames=len(positions), interval=interval)
+    return anim
