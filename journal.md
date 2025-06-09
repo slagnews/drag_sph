@@ -289,7 +289,9 @@ What we do, is we take the velocity of a nearby particle, and extrapolate it ove
 The drag coefficient can be calculated as such: Everytime we see that a mainflow particle subjects a force into a ghost particle, we mirror the force and add it to the drag force on the cylinder. Now that we have the drag force of the particle, the drag coefficient $C_d$ can be calculated as $$\frac{2*F_{drag}}{v_0^2*\rho_0*D}$$ with $v_0$ the inflow velocity, $$\rho_0$$ the reference density, and $D$ the cylinder diameter.
 When we do this for different reynolds numbers ($$Re = \rho_0 v_0 D/\nu$$), we get the final desired result for this project, which is the relation between the reynolds number and the drag coefficient. The results can be seen in the figure below:
 ![cd](figures/cd.png)
-Where we have added the emperical schiller naumann relation $$C_d = \frac{24}{Re}(1+0.15Re^{0.687})$$ as reference.
+Where we have added the emperical schiller naumann relation 
+$$C_d = \frac{24}{Re}(1+0.15Re^{0.687})$$
+ as reference.
 
 
 ## Reminder final deadline
