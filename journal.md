@@ -301,8 +301,9 @@ $$Re = \rho_0 v_0 D/\nu$$
 ![cd](figures/cd.png)
 Where we have added the emperical schiller naumann relation 
 $$C_d = \frac{24}{Re}(1+0.15Re^{0.687})$$
- as reference.
+as reference.
 
+I couldnt get the last equations to display nicely, I have no idea why, they really should be displayed the same way as the rest. Sorry for the inconvenience in reading.
 
 ## Reminder final deadline
 
