@@ -470,6 +470,7 @@ struct ParticleList {
 
 			for (int j=start_j; j<end_j; ++j) {
 				if (type[i] == ParticleType::inflow || type[i] == ParticleType::outflow) continue;
+				if (type[i] == ParticleType::ghost && type[j] == ParticleType::ghost) continue;
 				if (i == j) continue;
 
 				double xj = pos_x[j];
@@ -496,6 +497,8 @@ struct ParticleList {
 					// -------------------------------------
 
 					// --------- Viscosity force -----------
+
+
 					if (type[j] == ParticleType::ghost && type[i] == ParticleType::mainflow) {
 						// Ghost particles get a no-slip artificial velocity
 						double d_i = std::sqrt(pow(xi-params.Lx/2, 2)+pow(yi-params.Ly/2, 2)) - params.central_radius;
